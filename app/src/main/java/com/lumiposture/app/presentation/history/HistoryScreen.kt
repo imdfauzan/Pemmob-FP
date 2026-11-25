@@ -69,11 +69,6 @@ fun HistoryScreen(
                     style = MaterialTheme.typography.headlineLarge,
                     color = colors.textPrimary,
                 )
-                Text(
-                    text = "Rekaman lokal seluruh sesi belajar Anda",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = colors.textSecondary,
-                )
             }
         }
 

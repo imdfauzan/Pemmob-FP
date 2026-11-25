@@ -43,14 +43,13 @@ class AdaptiveInterventionManager @Inject constructor() {
     }
 
     fun snoozeEyeBreak(
-        intervalMinutes: Int,
         nowMs: Long = System.currentTimeMillis(),
     ) {
         eyeBreakActive = false
         lowBlinkViolationStartMs = null
         highSquintBlinkViolationStartMs = null
         // Schedule next scheduled break in 5 minutes from now
-        val intervalMs = intervalMinutes.coerceAtLeast(5) * 60_000L
+        val intervalMs = DEFAULT_EYE_BREAK_MINUTES * 60_000L
         lastEyeBreakTriggeredMs = nowMs - (intervalMs - (5 * 60_000L))
         previousAlertKey = null
     }
@@ -105,8 +104,11 @@ class AdaptiveInterventionManager @Inject constructor() {
         }
 
         // 2. Tech-Neck Posture (> 15s)
-        val isPostureViolation = snapshot.neckAngleDeg >= prefs.maxNeckAngleThresholdDeg ||
-            (snapshot.studyMode == StudyMode.HANDHELD && snapshot.isLyingDown)
+        val motionEnabled = prefs.enableAccelerometer || prefs.enableGyroscope
+        val isPostureViolation = motionEnabled && (
+            snapshot.neckAngleDeg >= prefs.maxNeckAngleThresholdDeg ||
+                (snapshot.studyMode == StudyMode.HANDHELD && snapshot.isLyingDown)
+            )
         postureViolationStartMs = if (isPostureViolation) {
             postureViolationStartMs ?: nowMs
         } else {
@@ -132,7 +134,7 @@ class AdaptiveInterventionManager @Inject constructor() {
         // 3. Dynamic 20-20-20 Eye Break
         val sessionElapsedMs = nowMs - (sessionStartMs ?: nowMs)
         val sinceLastBreakMs = nowMs - (lastEyeBreakTriggeredMs ?: nowMs)
-        val scheduledBreakIntervalMs = prefs.eyeBreakIntervalMinutes.coerceAtLeast(1) * 60_000L
+        val scheduledBreakIntervalMs = DEFAULT_EYE_BREAK_MINUTES * 60_000L
 
         val lowBlinkActive = snapshot.faceDetected && sessionElapsedMs >= 30_000L && snapshot.blinkRateBpm < 10f
         lowBlinkViolationStartMs = if (lowBlinkActive) {
@@ -152,7 +154,7 @@ class AdaptiveInterventionManager @Inject constructor() {
 
         val eyeBreakReason = when {
             sinceLastBreakMs >= scheduledBreakIntervalMs ->
-                "Sudah ${prefs.eyeBreakIntervalMinutes} menit menatap layar. Saatnya jeda 20-20-20."
+                "Sudah $DEFAULT_EYE_BREAK_MINUTES menit menatap layar. Saatnya jeda 20-20-20."
             squintElapsed >= ADAPTIVE_SQUINT_BREAK_MS ->
                 "Frekuensi kedipan rendah (${snapshot.blinkRateBpm.roundToInt()} BPM) disertai mata menyipit."
             lowBlinkElapsed >= LOW_BLINK_BREAK_MS ->
@@ -172,7 +174,9 @@ class AdaptiveInterventionManager @Inject constructor() {
         }
 
         // 4. Dim-Room Glare Warning (> 8s)
-        val glareActive = snapshot.ambientLux < prefs.minLuxThreshold && snapshot.screenBrightnessPct > 65
+        val glareActive = prefs.enableLightSensor &&
+            snapshot.ambientLux < prefs.minLuxThreshold &&
+            snapshot.screenBrightnessPct > 65
         glareViolationStartMs = if (glareActive) {
             glareViolationStartMs ?: nowMs
         } else {
@@ -201,6 +205,7 @@ class AdaptiveInterventionManager @Inject constructor() {
     }
 
     companion object {
+        const val DEFAULT_EYE_BREAK_MINUTES = 20
         const val DISTANCE_PERSIST_MS = 5_000L
         const val POSTURE_PERSIST_MS = 15_000L
         const val GLARE_PERSIST_MS = 8_000L

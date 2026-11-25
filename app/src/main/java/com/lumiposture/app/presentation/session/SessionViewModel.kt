@@ -24,6 +24,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -34,6 +36,7 @@ data class ActiveSessionUiState(
     val snapshot: SensorSnapshot = SensorSnapshot(),
     val activeAlert: ActiveAlert = ActiveAlert.None,
     val studyMode: StudyMode = StudyMode.HANDHELD,
+    val preferences: UserPreferences = UserPreferences(),
     val showCameraPreview: Boolean = true,
     val showMeshOverlay: Boolean = true,
     val debugTelemetryEnabled: Boolean = false,
@@ -86,7 +89,12 @@ class SessionViewModel @Inject constructor(
             launch {
                 userDataStore.preferencesFlow.collect { prefs ->
                     currentPrefs = prefs
-                    _uiState.update { it.copy(debugTelemetryEnabled = prefs.debugTelemetryEnabled) }
+                    _uiState.update {
+                        it.copy(
+                            preferences = prefs,
+                            debugTelemetryEnabled = prefs.debugTelemetryEnabled,
+                        )
+                    }
                 }
             }
 
@@ -107,8 +115,10 @@ class SessionViewModel @Inject constructor(
 
             sensorFusionEngine.fuseStream(
                 visionFlow = faceLandmarkerHelper.telemetryFlow,
-                environmentFlow = environmentSensorManager.observeEnvironmentTelemetry(),
-                noiseDbFlow = noiseLevelSampler.observeNoiseDb(),
+                environmentFlow = environmentSensorManager.observeEnvironmentTelemetry(userDataStore.preferencesFlow),
+                noiseDbFlow = noiseLevelSampler.observeNoiseDb(
+                    userDataStore.preferencesFlow.map { it.enableMicrophone }.distinctUntilChanged(),
+                ),
                 studyModeFlow = studyModeFlow,
                 preferencesFlow = userDataStore.preferencesFlow,
                 sessionStartTimeMs = { sessionStartMillis },
@@ -181,7 +191,7 @@ class SessionViewModel @Inject constructor(
     }
 
     fun snoozeEyeBreak() {
-        interventionManager.snoozeEyeBreak(currentPrefs.eyeBreakIntervalMinutes)
+        interventionManager.snoozeEyeBreak()
         _uiState.update { it.copy(activeAlert = ActiveAlert.None) }
     }
 

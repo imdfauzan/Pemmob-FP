@@ -2,7 +2,7 @@
 
 **Real-Time Eye Health & Study Ergonomics Assistant (Android Native)**
 
-LumiPosture adalah aplikasi Android *digital health* dan *assistive ergonomics* berbasis **Sensor Fusion (6 Sensor Hardware)** dan **Hybrid AI** (*Pre-Trained On-Device Vision AI* + *Gemini Analytical AI*) untuk membantu pengguna menjaga kesehatan mata dan postur tulang leher secara *real-time* selama belajar atau bekerja dengan perangkat mobile.
+LumiPosture adalah aplikasi Android *digital health* dan *assistive ergonomics* berbasis **Sensor Fusion** dan **Hybrid AI** (*Pre-Trained On-Device Vision AI* + *Gemini Analytical AI*) untuk membantu pengguna menjaga kesehatan mata dan postur tulang leher secara *real-time* selama menggunakan HP.
 
 ---
 
@@ -54,7 +54,8 @@ LumiPosture hadir sebagai asisten ergonomi pasif (*non-intrusive*) tanpa memerlu
    - Penyimpanan lokal menggunakan Room Database lengkap dengan grafik tren mingguan 7 hari, total durasi belajar sehat, dan daftar riwayat sesi.
 6. **In-App Configuration & Telemetry Debug Overlay**
    - Konfigurasi **Gemini API Key langsung di dalam menu Setelan** (tersimpan aman di Jetpack DataStore perangkat).
-   - Penyesuaian ambang batas jarak minimum, sudut leher maksimum, cahaya minimum, interval istirahat, dan toggle getaran haptik.
+   - Penyesuaian ambang batas jarak minimum, sudut leher maksimum, cahaya minimum, serta toggle getaran haptik.
+   - Toggle aktif/nonaktif untuk masing-masing dari **6 modul sensor** (*Kamera Depan, Ambient Light, Proximity, Accelerometer, Gyroscope, Mikrofon*) di menu Setelan.
    - Toggle **Telemetry Debug** untuk menampilkan pembacaan sensor mentah ($\text{Lux}$, layar `%`, $\text{dB}$, $\text{IPD px}$, *pitch* perangkat/kepala, sudut leher, $\text{FPS}$, dan status *proximity*) secara langsung di layar sesi.
 
 ---
@@ -205,10 +206,3 @@ app/src/main/
    - Tidak perlu menyimpan API key di file konfigurasi kode sumber.
    - Buka aplikasi **LumiPosture** -> masuk ke tab **Setelan** -> isi kolom **Konfigurasi Gemini API Key** lalu tekan **Simpan API Key**.
    - Jika API key belum diisi atau perangkat sedang offline, aplikasi tetap berjalan normal menggunakan **Local Rule-Based Insight Engine** dan hasil sesi dapat dianalisis ulang kapan saja setelah API key dan koneksi internet tersedia.
-
----
-
-## 9. Dokumentasi Spesifikasi
-
-- Product Requirements Document: [docs/prd_lumiposture.md](docs/prd_lumiposture.md)
-- Technical Specification & System Architecture: [docs/tech_spec_architecture_lumiposture.md](docs/tech_spec_architecture_lumiposture.md)

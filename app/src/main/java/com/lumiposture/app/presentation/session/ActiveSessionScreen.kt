@@ -106,6 +106,7 @@ fun ActiveSessionScreen(
     }
 
     val snapshot = uiState.snapshot
+    val prefs = uiState.preferences
 
     Box(
         modifier = Modifier
@@ -118,7 +119,7 @@ fun ActiveSessionScreen(
                 .fillMaxSize()
                 .hazeSource(hazeState),
         ) {
-            if (hasCameraPermission) {
+            if (hasCameraPermission && prefs.enableFrontCamera) {
                 CameraPreviewWithMesh(
                     faceLandmarkerHelper = viewModel.faceLandmarkerHelper,
                     landmarks = snapshot.landmarkPoints,
@@ -127,12 +128,25 @@ fun ActiveSessionScreen(
                     frameWidth = snapshot.frameWidth,
                     frameHeight = snapshot.frameHeight,
                     showMeshOverlay = uiState.showMeshOverlay && uiState.showCameraPreview,
-                    isActive = !uiState.isEndingSession,
+                    isActive = !uiState.isEndingSession && prefs.enableFrontCamera,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
 
-            if (!uiState.showCameraPreview) {
+            if (!prefs.enableFrontCamera) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(DarkCanvas),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "Kamera Depan dinonaktifkan di Setelan",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = HudTextSecondary,
+                    )
+                }
+            } else if (!uiState.showCameraPreview) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -293,10 +307,15 @@ fun ActiveSessionScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
+                    val distanceEnabled = prefs.enableFrontCamera || prefs.enableProximitySensor
                     HudMetricTile(
                         icon = Icons.Rounded.Straighten,
                         label = "Jarak",
-                        value = String.format(Locale.US, "%.0f cm", snapshot.distanceCm),
+                        value = if (distanceEnabled) {
+                            String.format(Locale.US, "%.0f cm", snapshot.distanceCm)
+                        } else {
+                            "Off"
+                        },
                         status = snapshot.distanceStatus,
                         hazeState = hazeState,
                         modifier = Modifier.weight(1f),
@@ -304,15 +323,24 @@ fun ActiveSessionScreen(
                     HudMetricTile(
                         icon = Icons.Rounded.RemoveRedEye,
                         label = "Kedipan",
-                        value = String.format(Locale.US, "%.1f BPM", snapshot.blinkRateBpm),
+                        value = if (prefs.enableFrontCamera) {
+                            String.format(Locale.US, "%.1f BPM", snapshot.blinkRateBpm)
+                        } else {
+                            "Off"
+                        },
                         status = snapshot.blinkStatus,
                         hazeState = hazeState,
                         modifier = Modifier.weight(1f),
                     )
+                    val motionEnabled = prefs.enableAccelerometer || prefs.enableGyroscope
                     HudMetricTile(
                         icon = Icons.Rounded.AccessibilityNew,
                         label = "Leher",
-                        value = String.format(Locale.US, "%.0f deg", snapshot.neckAngleDeg),
+                        value = if (motionEnabled) {
+                            String.format(Locale.US, "%.0f deg", snapshot.neckAngleDeg)
+                        } else {
+                            "Off"
+                        },
                         status = snapshot.postureStatus,
                         hazeState = hazeState,
                         modifier = Modifier.weight(1f),
@@ -326,7 +354,11 @@ fun ActiveSessionScreen(
                     HudMetricTile(
                         icon = Icons.Rounded.LightMode,
                         label = "Cahaya",
-                        value = String.format(Locale.US, "%.0f lx · %d%%", snapshot.ambientLux, snapshot.screenBrightnessPct),
+                        value = if (prefs.enableLightSensor) {
+                            String.format(Locale.US, "%.0f lx · %d%%", snapshot.ambientLux, snapshot.screenBrightnessPct)
+                        } else {
+                            "Off"
+                        },
                         status = snapshot.lightingStatus,
                         hazeState = hazeState,
                         modifier = Modifier.weight(1f),
@@ -334,7 +366,11 @@ fun ActiveSessionScreen(
                     HudMetricTile(
                         icon = Icons.Rounded.GraphicEq,
                         label = "Kebisingan",
-                        value = String.format(Locale.US, "%.0f dB", snapshot.noiseDb),
+                        value = if (prefs.enableMicrophone) {
+                            String.format(Locale.US, "%.0f dB", snapshot.noiseDb)
+                        } else {
+                            "Off"
+                        },
                         status = snapshot.noiseStatus,
                         hazeState = hazeState,
                         modifier = Modifier.weight(1f),

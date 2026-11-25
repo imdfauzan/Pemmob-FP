@@ -3,6 +3,7 @@ package com.lumiposture.app.domain.usecase
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.util.Log
 import com.lumiposture.app.data.local.prefs.UserCalibrationDataStore
 import com.lumiposture.app.data.remote.GeminiApiService
 import com.lumiposture.app.data.remote.dto.GeminiContent
@@ -24,8 +25,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import retrofit2.HttpException
 import javax.inject.Inject
 import kotlin.math.roundToInt
+
+data class AiAnalysisOutcome(
+    val insight: AiInsight,
+    val fallbackReason: String? = null,
+)
 
 class AnalyzeSessionWithAiUseCase @Inject constructor(
     @param:ApplicationContext private val context: Context,
@@ -38,10 +45,24 @@ class AnalyzeSessionWithAiUseCase @Inject constructor(
     suspend fun analyze(
         aggregate: SessionAggregateInput,
         samples: List<TelemetrySamplePoint>,
-    ): AiInsight = withContext(Dispatchers.IO) {
+    ): AiInsight = analyzeWithOutcome(aggregate, samples).insight
+
+    suspend fun analyzeWithOutcome(
+        aggregate: SessionAggregateInput,
+        samples: List<TelemetrySamplePoint>,
+    ): AiAnalysisOutcome = withContext(Dispatchers.IO) {
         val apiKey = userDataStore.preferencesFlow.first().geminiApiKey.trim()
-        if (apiKey.isBlank() || !isNetworkAvailable()) {
-            return@withContext localFallbackEngine.generate(aggregate)
+        if (apiKey.isBlank()) {
+            return@withContext AiAnalysisOutcome(
+                insight = localFallbackEngine.generate(aggregate),
+                fallbackReason = "Gemini API Key belum diatur di Setelan.",
+            )
+        }
+        if (!hasInternetTransport()) {
+            return@withContext AiAnalysisOutcome(
+                insight = localFallbackEngine.generate(aggregate),
+                fallbackReason = "Perangkat tidak terhubung ke internet.",
+            )
         }
 
         val payload = buildTelemetryPayload(aggregate, samples)
@@ -76,30 +97,50 @@ class AnalyzeSessionWithAiUseCase @Inject constructor(
                 ?.firstOrNull()
                 ?.text
                 ?.trim()
-                ?: error("Empty Gemini response")
+                ?.let(::stripMarkdownJsonFence)
+                ?: error("Respons Gemini kosong")
 
             val parsed = json.decodeFromString<GeminiInsightOutputDto>(rawText)
-            AiInsight(
-                statusLabel = sanitizeText(parsed.healthStatusLabel).ifBlank { "Perlu Perhatian" },
-                executiveSummary = sanitizeText(parsed.executiveSummary),
-                primaryRiskFactor = sanitizeText(parsed.primaryRiskFactor),
-                sensorCorrelations = parsed.sensorCorrelations
-                    .asSequence()
-                    .map(::sanitizeText)
-                    .filter { it.isNotBlank() }
-                    .take(4)
-                    .toList(),
-                actionableRecommendations = parsed.actionableRecommendations
-                    .asSequence()
-                    .map(::sanitizeText)
-                    .filter { it.isNotBlank() }
-                    .take(3)
-                    .toList(),
-                isGeneratedByCloudAi = true,
-                createdAtMillis = System.currentTimeMillis(),
+            AiAnalysisOutcome(
+                insight = AiInsight(
+                    statusLabel = sanitizeText(parsed.healthStatusLabel).ifBlank { "Perlu Perhatian" },
+                    executiveSummary = sanitizeText(parsed.executiveSummary),
+                    primaryRiskFactor = sanitizeText(parsed.primaryRiskFactor),
+                    sensorCorrelations = parsed.sensorCorrelations
+                        .asSequence()
+                        .map(::sanitizeText)
+                        .filter { it.isNotBlank() }
+                        .take(4)
+                        .toList(),
+                    actionableRecommendations = parsed.actionableRecommendations
+                        .asSequence()
+                        .map(::sanitizeText)
+                        .filter { it.isNotBlank() }
+                        .take(3)
+                        .toList(),
+                    isGeneratedByCloudAi = true,
+                    createdAtMillis = System.currentTimeMillis(),
+                ),
             )
-        }.getOrElse {
-            localFallbackEngine.generate(aggregate)
+        }.getOrElse { error ->
+            Log.w(TAG, "Gemini analysis failed, using offline fallback", error)
+            val reason = when (error) {
+                is HttpException -> {
+                    val code = error.code()
+                    if (code == 400 || code == 401 || code == 403) {
+                        "API Key ditolak atau tidak valid (HTTP $code)."
+                    } else if (code == 429) {
+                        "Kuota Gemini API terlampaui sementara (HTTP 429)."
+                    } else {
+                        "Layanan Gemini mengembalikan error HTTP $code."
+                    }
+                }
+                else -> "Koneksi ke Gemini gagal: ${error.localizedMessage ?: "cek jaringan atau API key"}."
+            }
+            AiAnalysisOutcome(
+                insight = localFallbackEngine.generate(aggregate),
+                fallbackReason = reason,
+            )
         }
     }
 
@@ -203,13 +244,20 @@ class AnalyzeSessionWithAiUseCase @Inject constructor(
         }
     }
 
-    private fun isNetworkAvailable(): Boolean {
+    private fun hasInternetTransport(): Boolean {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
             ?: return false
         val network = cm.activeNetwork ?: return false
         val caps = cm.getNetworkCapabilities(network) ?: return false
-        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    }
+
+    private fun stripMarkdownJsonFence(raw: String): String {
+        return raw
+            .removePrefix("```json")
+            .removePrefix("```")
+            .removeSuffix("```")
+            .trim()
     }
 
     private fun sanitizeText(raw: String): String {
@@ -219,6 +267,7 @@ class AnalyzeSessionWithAiUseCase @Inject constructor(
     private fun roundOneDecimal(value: Float): Float = (value * 10f).roundToInt() / 10f
 
     companion object {
+        private const val TAG = "AnalyzeSessionAi"
         private const val SAMPLE_STEP_SEC = 10
         private val EMOJI_REGEX = Regex("[\\p{So}\\p{Cs}]")
 

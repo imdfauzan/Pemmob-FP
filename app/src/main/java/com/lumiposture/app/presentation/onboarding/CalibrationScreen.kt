@@ -191,7 +191,7 @@ fun CalibrationScreen(
                     frameWidth = vision.frameWidth,
                     frameHeight = vision.frameHeight,
                     showMeshOverlay = true,
-                    isActive = uiState.permissionsGranted,
+                    isActive = true,
                     modifier = Modifier
                         .fillMaxSize()
                         .hazeSource(previewHazeState),

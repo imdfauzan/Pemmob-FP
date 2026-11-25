@@ -74,10 +74,10 @@ class ErgonomicScoreCalculator @Inject constructor() {
 
     private fun scoreBlink(bpm: Float, squintAvg: Float): Pair<Int, MetricStatus> {
         val baseScore = when {
-            bpm in 12f..25f -> 100f
-            bpm in 10f..12f -> 75f + (bpm - 10f) * 12.5f
-            bpm in 25f..32f -> 100f - (bpm - 25f) * 3.5f
-            bpm < 10f -> (20f + (bpm / 10f) * 50f).coerceIn(15f, 70f)
+            (bpm >= 12f) && (bpm <= 25f) -> 100f
+            (bpm >= 10f) && (bpm < 12f) -> 75f + ((bpm - 10f) * 12.5f)
+            (bpm > 25f) && (bpm <= 32f) -> 100f - ((bpm - 25f) * 3.5f)
+            bpm < 10f -> (20f + ((bpm / 10f) * 50f)).coerceIn(15f, 70f)
             else -> 72f
         }
         val squintPenalty = if (squintAvg > 0.35f) ((squintAvg - 0.35f) * 40f).coerceAtMost(25f) else 0f

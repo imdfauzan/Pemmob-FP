@@ -244,13 +244,6 @@ fun SettingsScreen(
                     value = prefs.minLuxThreshold.toFloat(),
                     range = 40f..200f,
                 ) { viewModel.updateMinLuxThreshold(it.roundToInt()) }
-
-                ThresholdSliderRow(
-                    label = "Interval Istirahat 20-20-20",
-                    valueText = "${prefs.eyeBreakIntervalMinutes} mnt",
-                    value = prefs.eyeBreakIntervalMinutes.toFloat(),
-                    range = 5f..45f,
-                ) { viewModel.updateEyeBreakMinutes(it.roundToInt()) }
             }
         }
 
@@ -282,25 +275,76 @@ fun SettingsScreen(
             }
         }
 
-        // Hardware & API Diagnostics
+        // Per-Sensor Controls & System Status
         item {
             LumiCard {
                 Text(
-                    text = "Status Sistem & Sensor",
+                    text = "Kontrol Sensor & Status Sistem",
                     style = MaterialTheme.typography.titleLarge,
                     color = colors.textPrimary,
                 )
-                Spacer(modifier = Modifier.height(10.dp))
-                StatusLine("Sensor Aktif", "${caps.availableHardwareCount} dari 6 modul")
-                StatusLine(
-                    "Sensor Gerak",
-                    if (caps.hasRotationVector) "Rotation Vector (Gyro+Accel)" else "Accelerometer Low-Pass",
-                )
+                Spacer(modifier = Modifier.height(8.dp))
                 StatusLine(
                     "Gemini API Key",
                     if (uiState.isGeminiKeyConfigured) "Tersimpan di Aplikasi" else "Belum Diatur (Fallback Lokal)",
                 )
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(12.dp))
+
+                SensorToggleRow(
+                    title = "Kamera Depan",
+                    hardwareAvailable = caps.hasFrontCamera,
+                    description = "Vision AI untuk kedipan mata, jarak IPD, dan head pitch",
+                    checked = prefs.enableFrontCamera && caps.hasFrontCamera,
+                    onCheckedChange = viewModel::setFrontCameraEnabled,
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+
+                SensorToggleRow(
+                    title = "Ambient Light (Lux)",
+                    hardwareAvailable = caps.hasLightSensor,
+                    description = "Pemantauan intensitas cahaya ruang terhadap layar",
+                    checked = prefs.enableLightSensor && caps.hasLightSensor,
+                    onCheckedChange = viewModel::setLightSensorEnabled,
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+
+                SensorToggleRow(
+                    title = "Proximity Sensor",
+                    hardwareAvailable = caps.hasProximitySensor,
+                    description = "Pengaman jarak sangat dekat (< 10 cm)",
+                    checked = prefs.enableProximitySensor && caps.hasProximitySensor,
+                    onCheckedChange = viewModel::setProximitySensorEnabled,
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+
+                SensorToggleRow(
+                    title = "Accelerometer",
+                    hardwareAvailable = caps.hasAccelerometer,
+                    description = "Deteksi kemiringan perangkat dan postur tiduran",
+                    checked = prefs.enableAccelerometer && caps.hasAccelerometer,
+                    onCheckedChange = viewModel::setAccelerometerEnabled,
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+
+                val hasGyroOrFusion = caps.hasGyroscope || caps.hasRotationVector
+                SensorToggleRow(
+                    title = "Gyroscope",
+                    hardwareAvailable = hasGyroOrFusion,
+                    description = "Stabilisasi sudut kemiringan Rotation Vector",
+                    checked = prefs.enableGyroscope && hasGyroOrFusion,
+                    onCheckedChange = viewModel::setGyroscopeEnabled,
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+
+                SensorToggleRow(
+                    title = "Mikrofon (dB)",
+                    hardwareAvailable = caps.hasMicrophone,
+                    description = "Pengukuran kebisingan lingkungan tanpa merekam audio",
+                    checked = prefs.enableMicrophone && caps.hasMicrophone,
+                    onCheckedChange = viewModel::setMicrophoneEnabled,
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
                 SecondaryPillButton(
                     text = "Hapus Semua Riwayat Sesi",
                     onClick = { showClearConfirm = true },
@@ -330,6 +374,49 @@ fun SettingsScreen(
                     Text("Batal")
                 }
             },
+        )
+    }
+}
+
+@Composable
+private fun SensorToggleRow(
+    title: String,
+    hardwareAvailable: Boolean,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    val colors = LumiTheme.colors
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(end = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                color = if (hardwareAvailable) colors.textPrimary else colors.textTertiary,
+            )
+            Text(
+                text = if (hardwareAvailable) description else "Sensor tidak tersedia di perangkat",
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (hardwareAvailable) colors.textSecondary else colors.warning,
+            )
+        }
+        Switch(
+            checked = checked,
+            enabled = hardwareAvailable,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = colors.cardSurface,
+                checkedTrackColor = colors.primary,
+            ),
         )
     }
 }

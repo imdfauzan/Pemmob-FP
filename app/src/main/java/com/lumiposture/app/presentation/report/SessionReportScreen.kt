@@ -104,7 +104,7 @@ fun SessionReportScreen(
                 }
                 Column {
                     Text(
-                        text = "Laporan Sesi Ergonomi",
+                        text = "Hasil Pengecekan Ergonomi",
                         style = MaterialTheme.typography.headlineMedium,
                         color = colors.textPrimary,
                     )
@@ -213,7 +213,7 @@ fun SessionReportScreen(
                         text = if (insight.isGeneratedByCloudAi) {
                             "Analisis Korelasi (Gemini 2.5 Flash)"
                         } else {
-                            "Ringkasan Analitik Lokal (Mode Offline)"
+                            "Hasil Analisis (Offline)"
                         },
                         style = MaterialTheme.typography.labelLarge,
                         color = colors.primary,
@@ -290,7 +290,15 @@ fun SessionReportScreen(
                     }
 
                     if (!insight.isGeneratedByCloudAi) {
-                        Spacer(modifier = Modifier.height(16.dp))
+                        uiState.analysisErrorMessage?.let { reason ->
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = reason,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = colors.warning,
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(14.dp))
                         SecondaryPillButton(
                             text = if (uiState.isReanalyzing) "Menganalisis Ulang..." else "Analisis Ulang dengan Gemini",
                             icon = Icons.Rounded.Refresh,

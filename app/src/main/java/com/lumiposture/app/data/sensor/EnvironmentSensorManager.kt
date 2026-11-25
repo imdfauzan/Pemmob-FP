@@ -13,17 +13,29 @@ import android.os.SystemClock
 import android.provider.Settings
 import com.lumiposture.app.domain.model.EnvironmentTelemetry
 import com.lumiposture.app.domain.model.SensorCapabilities
+import com.lumiposture.app.domain.model.UserPreferences
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.hypot
 import kotlin.math.roundToInt
+
+private data class SensorToggleConfig(
+    val enableLight: Boolean,
+    val enableProximity: Boolean,
+    val enableAccelerometer: Boolean,
+    val enableGyroscope: Boolean,
+)
 
 @Singleton
 class EnvironmentSensorManager @Inject constructor(
@@ -59,7 +71,33 @@ class EnvironmentSensorManager @Inject constructor(
         )
     }
 
-    fun observeEnvironmentTelemetry(): Flow<EnvironmentTelemetry> = callbackFlow {
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun observeEnvironmentTelemetry(preferencesFlow: Flow<UserPreferences>): Flow<EnvironmentTelemetry> {
+        return preferencesFlow
+            .map { prefs ->
+                SensorToggleConfig(
+                    enableLight = prefs.enableLightSensor,
+                    enableProximity = prefs.enableProximitySensor,
+                    enableAccelerometer = prefs.enableAccelerometer,
+                    enableGyroscope = prefs.enableGyroscope,
+                )
+            }
+            .distinctUntilChanged()
+            .flatMapLatest { cfg ->
+                observeWithConfig(cfg)
+            }
+    }
+
+    fun observeEnvironmentTelemetry(): Flow<EnvironmentTelemetry> = observeWithConfig(
+        SensorToggleConfig(
+            enableLight = true,
+            enableProximity = true,
+            enableAccelerometer = true,
+            enableGyroscope = true,
+        ),
+    )
+
+    private fun observeWithConfig(cfg: SensorToggleConfig): Flow<EnvironmentTelemetry> = callbackFlow {
         var ambientLux = 200f
         var isProximityNear = false
         var proximityCm = 100f
@@ -68,7 +106,7 @@ class EnvironmentSensorManager @Inject constructor(
         var lastBrightnessCheckMs = 0L
         var cachedBrightnessPct = readScreenBrightnessPct()
 
-        val usingRotationVector = rotationVectorSensor != null
+        val usingRotationVector = cfg.enableGyroscope && (rotationVectorSensor != null)
         val rotationMatrix = FloatArray(9)
         var filteredAx = 0f
         var filteredAy = 9.81f
@@ -100,33 +138,39 @@ class EnvironmentSensorManager @Inject constructor(
             override fun onSensorChanged(event: SensorEvent) {
                 when (event.sensor.type) {
                     Sensor.TYPE_LIGHT -> {
-                        ambientLux = event.values[0].coerceAtLeast(0f)
+                        if (cfg.enableLight) {
+                            ambientLux = event.values[0].coerceAtLeast(0f)
+                        }
                     }
 
                     Sensor.TYPE_PROXIMITY -> {
-                        val value = event.values[0]
-                        val maxRange = proximitySensor?.maximumRange ?: 5f
-                        proximityCm = value
-                        isProximityNear = (value < maxRange) && (value < 10f)
+                        if (cfg.enableProximity) {
+                            val value = event.values[0]
+                            val maxRange = proximitySensor?.maximumRange ?: 5f
+                            proximityCm = value
+                            isProximityNear = (value < maxRange) && (value < 10f)
+                        }
                     }
 
                     Sensor.TYPE_ROTATION_VECTOR -> {
-                        SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
-                        val gx = rotationMatrix[6]
-                        val gy = rotationMatrix[7]
-                        val gz = rotationMatrix[8]
-                        val horiz = hypot(gx.toDouble(), gy.toDouble())
-                        val rawPitchDeg = Math.toDegrees(atan2(gz.toDouble(), horiz)).toFloat()
-                        isLyingDown = gz < -0.45f
-                        devicePitchDeg = if (rawPitchDeg < -20f) {
-                            abs(rawPitchDeg).coerceIn(0f, 90f)
-                        } else {
-                            rawPitchDeg.coerceIn(0f, 90f)
+                        if (usingRotationVector) {
+                            SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
+                            val gx = rotationMatrix[6]
+                            val gy = rotationMatrix[7]
+                            val gz = rotationMatrix[8]
+                            val horiz = hypot(gx.toDouble(), gy.toDouble())
+                            val rawPitchDeg = Math.toDegrees(atan2(gz.toDouble(), horiz)).toFloat()
+                            isLyingDown = cfg.enableAccelerometer && (gz < -0.45f)
+                            devicePitchDeg = if (rawPitchDeg < -20f) {
+                                abs(rawPitchDeg).coerceIn(0f, 90f)
+                            } else {
+                                rawPitchDeg.coerceIn(0f, 90f)
+                            }
                         }
                     }
 
                     Sensor.TYPE_ACCELEROMETER -> {
-                        if (!usingRotationVector) {
+                        if (!usingRotationVector && cfg.enableAccelerometer) {
                             val alpha = 0.2f
                             if (!accelInitialized) {
                                 filteredAx = event.values[0]
@@ -155,11 +199,15 @@ class EnvironmentSensorManager @Inject constructor(
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
         }
 
-        lightSensor?.let { sensorManager.registerListener(listener, it, SensorManager.SENSOR_DELAY_UI) }
-        proximitySensor?.let { sensorManager.registerListener(listener, it, SensorManager.SENSOR_DELAY_UI) }
-        if (rotationVectorSensor != null) {
+        if (cfg.enableLight) {
+            lightSensor?.let { sensorManager.registerListener(listener, it, SensorManager.SENSOR_DELAY_UI) }
+        }
+        if (cfg.enableProximity) {
+            proximitySensor?.let { sensorManager.registerListener(listener, it, SensorManager.SENSOR_DELAY_UI) }
+        }
+        if (usingRotationVector) {
             sensorManager.registerListener(listener, rotationVectorSensor, SensorManager.SENSOR_DELAY_UI)
-        } else {
+        } else if (cfg.enableAccelerometer) {
             accelerometer?.let { sensorManager.registerListener(listener, it, SensorManager.SENSOR_DELAY_UI) }
         }
 

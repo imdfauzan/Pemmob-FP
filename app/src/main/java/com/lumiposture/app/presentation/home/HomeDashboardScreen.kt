@@ -83,7 +83,7 @@ fun HomeDashboardScreen(
                     color = colors.textPrimary,
                 )
                 Text(
-                    text = "Pemantauan Ergonomi Mata & Postur Belajar",
+                    text = "Pemantauan Ergonomi Penggunaan HP",
                     style = MaterialTheme.typography.bodyMedium,
                     color = colors.textSecondary,
                 )
@@ -192,7 +192,7 @@ fun HomeDashboardScreen(
                 Spacer(modifier = Modifier.height(14.dp))
 
                 PillButton(
-                    text = "Mulai Sesi Belajar",
+                    text = "Mulai",
                     icon = Icons.Rounded.PlayArrow,
                     onClick = { onStartSession(uiState.selectedMode) },
                     modifier = Modifier.fillMaxWidth(),
@@ -245,7 +245,7 @@ fun HomeDashboardScreen(
         if (uiState.recentSessions.isNotEmpty()) {
             item {
                 Text(
-                    text = "Sesi Terbaru",
+                    text = "Skor Terbaru",
                     style = MaterialTheme.typography.titleMedium,
                     color = colors.textSecondary,
                     modifier = Modifier.padding(top = 4.dp),

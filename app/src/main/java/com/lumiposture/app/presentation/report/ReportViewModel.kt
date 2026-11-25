@@ -19,6 +19,7 @@ data class ReportUiState(
     val report: SessionReport? = null,
     val isLoading: Boolean = true,
     val isReanalyzing: Boolean = false,
+    val analysisErrorMessage: String? = null,
 )
 
 @HiltViewModel
@@ -30,15 +31,18 @@ class ReportViewModel @Inject constructor(
 
     private val sessionId: Long = savedStateHandle["sessionId"] ?: 0L
     private val isReanalyzingFlow = MutableStateFlow(value = false)
+    private val errorMessageFlow = MutableStateFlow<String?>(null)
 
     val uiState: StateFlow<ReportUiState> = combine(
         sessionRepository.observeSessionReport(sessionId),
         isReanalyzingFlow,
-    ) { report, reanalyzing ->
+        errorMessageFlow,
+    ) { report, reanalyzing, errorMsg ->
         ReportUiState(
             report = report,
             isLoading = report == null,
             isReanalyzing = reanalyzing,
+            analysisErrorMessage = errorMsg,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -52,6 +56,7 @@ class ReportViewModel @Inject constructor(
 
         viewModelScope.launch {
             isReanalyzingFlow.value = true
+            errorMessageFlow.value = null
             val aggregate = analyzeSessionUseCase.buildAggregateInput(
                 durationSeconds = current.session.durationSeconds,
                 studyMode = current.session.studyMode,
@@ -59,8 +64,13 @@ class ReportViewModel @Inject constructor(
                 samples = current.samples,
                 avgBrightnessPct = 60,
             )
-            val newInsight = analyzeSessionUseCase.analyze(aggregate, current.samples)
-            sessionRepository.updateSessionInsight(current.session.id, newInsight)
+            val outcome = analyzeSessionUseCase.analyzeWithOutcome(aggregate, current.samples)
+            sessionRepository.updateSessionInsight(current.session.id, outcome.insight)
+            errorMessageFlow.value = if (outcome.insight.isGeneratedByCloudAi) {
+                null
+            } else {
+                outcome.fallbackReason
+            }
             isReanalyzingFlow.value = false
         }
     }

@@ -59,44 +59,64 @@ class SensorFusionEngine @Inject constructor(
         val nowMs = maxOf(vision.timestampMs, System.currentTimeMillis())
         val elapsedSec = ((nowMs - sessionStartTimeMs).coerceAtLeast(0L) / 1000L).toInt()
 
-        val rawCamDistanceCm = if (vision.faceDetected && (vision.ipdPixels > 4f)) {
+        val camEnabled = prefs.enableFrontCamera
+        val effectiveFaceDetected = camEnabled && vision.faceDetected
+        val effectiveBlinkBpm = if (camEnabled) vision.blinkRateBpm else 15f
+        val effectiveSquintAvg = if (camEnabled) vision.eyeSquintAvg else 0f
+        val effectiveTotalBlinks = if (camEnabled) vision.totalBlinks else 0
+        val effectiveHeadPitch = if (effectiveFaceDetected) vision.headPitchDeg else 0f
+        val effectiveIpd = if (effectiveFaceDetected) vision.ipdPixels else 0f
+        val effectiveFps = if (camEnabled) vision.inferenceFps else 0f
+
+        val rawCamDistanceCm = if (effectiveFaceDetected && (effectiveIpd > 4f)) {
             val baselineIpd = if (prefs.baselineIpdPx > 10f) prefs.baselineIpdPx else DEFAULT_BASELINE_IPD_PX
-            (BASELINE_DISTANCE_CM * (baselineIpd / vision.ipdPixels)).coerceIn(8f, 120f)
+            (BASELINE_DISTANCE_CM * (baselineIpd / effectiveIpd)).coerceIn(8f, 120f)
+        } else if (!camEnabled) {
+            BASELINE_DISTANCE_CM
         } else {
             smoothedDistanceCm ?: BASELINE_DISTANCE_CM
         }
 
-        val finalDistanceCm = if (env.isProximityNear) {
+        val proximityActive = prefs.enableProximitySensor && env.isProximityNear
+        val finalDistanceCm = if (proximityActive) {
             5f
+        } else if (!camEnabled) {
+            BASELINE_DISTANCE_CM
         } else {
             val prev = smoothedDistanceCm ?: rawCamDistanceCm
-            val ema = DISTANCE_EMA_ALPHA * rawCamDistanceCm + (1f - DISTANCE_EMA_ALPHA) * prev
+            val ema = (DISTANCE_EMA_ALPHA * rawCamDistanceCm) + ((1f - DISTANCE_EMA_ALPHA) * prev)
             smoothedDistanceCm = ema
             ema
         }
 
-        val rawNeckAngle = if (vision.faceDetected) {
-            (env.devicePitchDeg + vision.headPitchDeg).coerceIn(0f, 90f)
+        val motionEnabled = prefs.enableAccelerometer || prefs.enableGyroscope
+        val effectiveDevicePitch = if (motionEnabled) env.devicePitchDeg else 12f
+        val effectiveLyingDown = prefs.enableAccelerometer && env.isLyingDown
+
+        val rawNeckAngle = if (effectiveFaceDetected) {
+            (effectiveDevicePitch + effectiveHeadPitch).coerceIn(0f, 90f)
         } else {
-            env.devicePitchDeg.coerceIn(0f, 90f)
+            effectiveDevicePitch.coerceIn(0f, 90f)
         }
         val prevNeck = smoothedNeckAngleDeg ?: rawNeckAngle
-        val finalNeckAngle = (NECK_EMA_ALPHA * rawNeckAngle + (1f - NECK_EMA_ALPHA) * prevNeck)
+        val finalNeckAngle = ((NECK_EMA_ALPHA * rawNeckAngle) + ((1f - NECK_EMA_ALPHA) * prevNeck))
             .also { smoothedNeckAngleDeg = it }
 
-        val prevLux = smoothedLux ?: env.ambientLux
-        val finalLux = (0.35f * env.ambientLux + 0.65f * prevLux).also { smoothedLux = it }
+        val targetLux = if (prefs.enableLightSensor) env.ambientLux else 200f
+        val prevLux = smoothedLux ?: targetLux
+        val finalLux = (0.35f * targetLux + 0.65f * prevLux).also { smoothedLux = it }
 
-        val prevNoise = smoothedNoiseDb ?: noiseDb
-        val finalNoise = (0.4f * noiseDb + 0.6f * prevNoise).also { smoothedNoiseDb = it }
+        val targetNoise = if (prefs.enableMicrophone) noiseDb else 36f
+        val prevNoise = smoothedNoiseDb ?: targetNoise
+        val finalNoise = (0.4f * targetNoise + 0.6f * prevNoise).also { smoothedNoiseDb = it }
 
         val breakdown = scoreCalculator.calculate(
-            blinkRateBpm = vision.blinkRateBpm,
-            eyeSquintAvg = vision.eyeSquintAvg,
+            blinkRateBpm = effectiveBlinkBpm,
+            eyeSquintAvg = effectiveSquintAvg,
             distanceCm = finalDistanceCm,
-            isProximityTriggered = env.isProximityNear,
+            isProximityTriggered = proximityActive,
             neckAngleDeg = finalNeckAngle,
-            isLyingDown = env.isLyingDown,
+            isLyingDown = effectiveLyingDown,
             ambientLux = finalLux,
             screenBrightnessPct = env.screenBrightnessPct,
             noiseDb = finalNoise,
@@ -107,22 +127,22 @@ class SensorFusionEngine @Inject constructor(
             timestampMs = nowMs,
             elapsedSeconds = elapsedSec,
             studyMode = studyMode,
-            faceDetected = vision.faceDetected,
-            blinkRateBpm = vision.blinkRateBpm,
-            totalBlinks = vision.totalBlinks,
-            eyeSquintAvg = vision.eyeSquintAvg,
-            isDrowsyEyesClosed = vision.isDrowsyEyesClosed,
+            faceDetected = effectiveFaceDetected,
+            blinkRateBpm = effectiveBlinkBpm,
+            totalBlinks = effectiveTotalBlinks,
+            eyeSquintAvg = effectiveSquintAvg,
+            isDrowsyEyesClosed = camEnabled && vision.isDrowsyEyesClosed,
             distanceCm = finalDistanceCm,
-            isProximityTriggered = env.isProximityNear,
-            devicePitchDeg = env.devicePitchDeg,
-            headPitchDeg = vision.headPitchDeg,
+            isProximityTriggered = proximityActive,
+            devicePitchDeg = effectiveDevicePitch,
+            headPitchDeg = effectiveHeadPitch,
             neckAngleDeg = finalNeckAngle,
-            isLyingDown = env.isLyingDown,
+            isLyingDown = effectiveLyingDown,
             ambientLux = finalLux,
             screenBrightnessPct = env.screenBrightnessPct,
             noiseDb = finalNoise,
-            ipdPixels = vision.ipdPixels,
-            inferenceFps = vision.inferenceFps,
+            ipdPixels = effectiveIpd,
+            inferenceFps = effectiveFps,
             ergonomicScore = breakdown.overallScore,
             blinkSubScore = breakdown.blinkSubScore,
             distanceSubScore = breakdown.distanceSubScore,
@@ -134,9 +154,9 @@ class SensorFusionEngine @Inject constructor(
             postureStatus = breakdown.postureStatus,
             lightingStatus = breakdown.lightingStatus,
             noiseStatus = breakdown.noiseStatus,
-            landmarkPoints = vision.landmarkPoints,
-            leftIrisPoint = vision.leftIrisPoint,
-            rightIrisPoint = vision.rightIrisPoint,
+            landmarkPoints = if (camEnabled) vision.landmarkPoints else emptyList(),
+            leftIrisPoint = if (camEnabled) vision.leftIrisPoint else null,
+            rightIrisPoint = if (camEnabled) vision.rightIrisPoint else null,
             frameWidth = vision.frameWidth,
             frameHeight = vision.frameHeight,
         )

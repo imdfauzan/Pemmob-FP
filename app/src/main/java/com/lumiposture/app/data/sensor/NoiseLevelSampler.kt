@@ -9,9 +9,12 @@ import android.media.MediaRecorder
 import androidx.core.content.ContextCompat
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.isActive
@@ -24,6 +27,24 @@ import kotlin.math.sqrt
 class NoiseLevelSampler @Inject constructor(
     @param:ApplicationContext private val context: Context,
 ) {
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun observeNoiseDb(enabledFlow: Flow<Boolean>): Flow<Float> {
+        return enabledFlow
+            .distinctUntilChanged()
+            .flatMapLatest { enabled ->
+                if (enabled) {
+                    observeNoiseDb()
+                } else {
+                    flow {
+                        while (currentCoroutineContext().isActive) {
+                            emit(DEFAULT_QUIET_DB)
+                            delay(2000L)
+                        }
+                    }
+                }
+            }
+    }
+
     fun observeNoiseDb(): Flow<Float> = flow {
         val sampleRate = 16000
         val sampleWindowSamples = (sampleRate * 0.2f).toInt() // 200 ms window

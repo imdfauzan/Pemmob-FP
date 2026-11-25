@@ -6,10 +6,15 @@ data class UserPreferences(
     val minDistanceThresholdCm: Int = 25,
     val maxNeckAngleThresholdDeg: Int = 30,
     val minLuxThreshold: Int = 80,
-    val eyeBreakIntervalMinutes: Int = 20,
     val debugTelemetryEnabled: Boolean = false,
     val hapticsEnabled: Boolean = true,
     val geminiApiKey: String = "",
+    val enableFrontCamera: Boolean = true,
+    val enableLightSensor: Boolean = true,
+    val enableProximitySensor: Boolean = true,
+    val enableAccelerometer: Boolean = true,
+    val enableGyroscope: Boolean = true,
+    val enableMicrophone: Boolean = true,
 )
 
 data class TelemetrySamplePoint(

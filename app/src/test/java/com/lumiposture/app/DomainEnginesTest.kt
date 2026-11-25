@@ -1,5 +1,10 @@
 package com.lumiposture.app
 
+import com.lumiposture.app.data.remote.dto.GeminiContent
+import com.lumiposture.app.data.remote.dto.GeminiGenerateContentRequest
+import com.lumiposture.app.data.remote.dto.GeminiGenerationConfig
+import com.lumiposture.app.data.remote.dto.GeminiPart
+import com.lumiposture.app.data.remote.dto.GeminiSchema
 import com.lumiposture.app.domain.engine.AdaptiveInterventionManager
 import com.lumiposture.app.domain.engine.ErgonomicScoreCalculator
 import com.lumiposture.app.domain.engine.LocalRuleBasedInsightEngine
@@ -13,6 +18,8 @@ import com.lumiposture.app.domain.model.StudyMode
 import com.lumiposture.app.domain.model.UserPreferences
 import com.lumiposture.app.domain.model.VisionTelemetry
 import com.lumiposture.app.domain.usecase.CalculateBaselineCalibrationUseCase
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -192,5 +199,70 @@ class DomainEnginesTest {
     fun calibrationUseCase_computesMedianRobustly() {
         val median = calibrationUseCase.computeMedianIpd(listOf(82f, 200f, 84f, 86f, 85f))
         assertEquals(85f, median!!, 0.01f)
+    }
+
+    @Test
+    fun sensorFusion_disabledSensors_fallBackToNeutralValues() {
+        fusionEngine.resetSmoothing()
+        val snap = fusionEngine.fuseSingleTick(
+            vision = VisionTelemetry(
+                faceDetected = true,
+                blinkRateBpm = 4f,
+                ipdPixels = 300f,
+                headPitchDeg = 40f,
+                timestampMs = 3_000L,
+            ),
+            env = EnvironmentTelemetry(
+                ambientLux = 10f,
+                isProximityNear = true,
+                devicePitchDeg = 55f,
+                isLyingDown = true,
+                screenBrightnessPct = 95,
+            ),
+            noiseDb = 85f,
+            studyMode = StudyMode.HANDHELD,
+            prefs = UserPreferences(
+                enableFrontCamera = false,
+                enableLightSensor = false,
+                enableProximitySensor = false,
+                enableAccelerometer = false,
+                enableGyroscope = false,
+                enableMicrophone = false,
+            ),
+            sessionStartTimeMs = 0L,
+        )
+
+        assertFalse(snap.faceDetected)
+        assertFalse(snap.isProximityTriggered)
+        assertEquals(30f, snap.distanceCm, 0.1f)
+        assertEquals(15f, snap.blinkRateBpm, 0.1f)
+        assertEquals(200f, snap.ambientLux, 0.1f)
+        assertEquals(36f, snap.noiseDb, 0.1f)
+        assertEquals(12f, snap.neckAngleDeg, 0.1f)
+    }
+
+    @OptIn(ExperimentalSerializationApi::class)
+    @Test
+    fun geminiRequestJson_omitsNullFieldsForValidSchemaPayload() {
+        val json = Json {
+            ignoreUnknownKeys = true
+            encodeDefaults = true
+            explicitNulls = false
+        }
+        val req = GeminiGenerateContentRequest(
+            systemInstruction = GeminiContent(parts = listOf(GeminiPart("inst"))),
+            contents = listOf(GeminiContent(role = "user", parts = listOf(GeminiPart("{}")))),
+            generationConfig = GeminiGenerationConfig(
+                responseSchema = GeminiSchema(
+                    type = "OBJECT",
+                    properties = mapOf("summary" to GeminiSchema(type = "STRING")),
+                    required = listOf("summary"),
+                ),
+            ),
+        )
+
+        val serialized = json.encodeToString(req)
+        assertFalse(serialized.contains(":null"))
+        assertFalse(serialized.contains("\"role\":null"))
     }
 }

@@ -56,10 +56,6 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { userDataStore.updateMinLuxThreshold(lux) }
     }
 
-    fun updateEyeBreakMinutes(minutes: Int) {
-        viewModelScope.launch { userDataStore.updateEyeBreakInterval(minutes) }
-    }
-
     fun setDebugTelemetryEnabled(enabled: Boolean) {
         viewModelScope.launch { userDataStore.setDebugTelemetryEnabled(enabled) }
     }
@@ -74,6 +70,30 @@ class SettingsViewModel @Inject constructor(
 
     fun clearGeminiApiKey() {
         viewModelScope.launch { userDataStore.updateGeminiApiKey("") }
+    }
+
+    fun setFrontCameraEnabled(enabled: Boolean) {
+        viewModelScope.launch { userDataStore.setFrontCameraEnabled(enabled) }
+    }
+
+    fun setLightSensorEnabled(enabled: Boolean) {
+        viewModelScope.launch { userDataStore.setLightSensorEnabled(enabled) }
+    }
+
+    fun setProximitySensorEnabled(enabled: Boolean) {
+        viewModelScope.launch { userDataStore.setProximitySensorEnabled(enabled) }
+    }
+
+    fun setAccelerometerEnabled(enabled: Boolean) {
+        viewModelScope.launch { userDataStore.setAccelerometerEnabled(enabled) }
+    }
+
+    fun setGyroscopeEnabled(enabled: Boolean) {
+        viewModelScope.launch { userDataStore.setGyroscopeEnabled(enabled) }
+    }
+
+    fun setMicrophoneEnabled(enabled: Boolean) {
+        viewModelScope.launch { userDataStore.setMicrophoneEnabled(enabled) }
     }
 
     fun clearAllHistory() {

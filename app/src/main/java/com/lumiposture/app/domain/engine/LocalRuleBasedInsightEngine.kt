@@ -36,10 +36,10 @@ class LocalRuleBasedInsightEngine @Inject constructor() {
         val recommendations = mutableListOf<String>()
 
         val hasGlare = (input.avgAmbientLux < 80f) && (input.avgScreenBrightnessPct > 65)
-        val hasLowBlink = input.avgBlinkRateBpm < 10f || input.minBlinkRateBpm < 8f
-        val hasCloseDistance = input.avgDistanceCm < 25f || input.tooCloseDurationSec >= 30
-        val hasTechNeck = input.avgNeckAngleDeg >= 30f || input.techNeckDurationSec >= 60
-        val hasHighNoise = input.peakNoiseDb > 65f || input.avgNoiseDb > 60f
+        val hasLowBlink = (input.avgBlinkRateBpm < 10f) || (input.minBlinkRateBpm < 8f)
+        val hasCloseDistance = (input.avgDistanceCm < 25f) || (input.tooCloseDurationSec >= 30)
+        val hasTechNeck = (input.avgNeckAngleDeg >= 30f) || (input.techNeckDurationSec >= 60)
+        val hasHighNoise = (input.peakNoiseDb > 65f) || (input.avgNoiseDb > 60f)
 
         if (hasGlare && hasLowBlink) {
             correlations += String.format(
@@ -103,7 +103,7 @@ class LocalRuleBasedInsightEngine @Inject constructor() {
             )
         }
 
-        if (hasGlare || input.avgAmbientLux < 120f) {
+        if (hasGlare || (input.avgAmbientLux < 120f)) {
             recommendations += "Tingkatkan pencahayaan meja belajar minimal 150 Lux atau turunkan kecerahan layar ke kisaran 40-55%."
         }
         if (hasTechNeck) {
