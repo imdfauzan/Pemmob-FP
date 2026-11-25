@@ -3,12 +3,13 @@ package com.lumiposture.app.domain.model
 data class UserPreferences(
     val baselineIpdPx: Float = 0f,
     val isCalibrated: Boolean = false,
-    val minDistanceThresholdCm: Int = 30,
+    val minDistanceThresholdCm: Int = 25,
     val maxNeckAngleThresholdDeg: Int = 30,
     val minLuxThreshold: Int = 80,
     val eyeBreakIntervalMinutes: Int = 20,
     val debugTelemetryEnabled: Boolean = false,
     val hapticsEnabled: Boolean = true,
+    val geminiApiKey: String = "",
 )
 
 data class TelemetrySamplePoint(

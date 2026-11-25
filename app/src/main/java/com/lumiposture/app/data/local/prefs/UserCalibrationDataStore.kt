@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.lumiposture.app.domain.model.UserPreferences
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -30,18 +31,20 @@ class UserCalibrationDataStore @Inject constructor(
         val EYE_BREAK_MINUTES = intPreferencesKey("eye_break_minutes")
         val DEBUG_TELEMETRY = booleanPreferencesKey("debug_telemetry_enabled")
         val HAPTICS_ENABLED = booleanPreferencesKey("haptics_enabled")
+        val GEMINI_API_KEY = stringPreferencesKey("gemini_api_key")
     }
 
     val preferencesFlow: Flow<UserPreferences> = context.lumiDataStore.data.map { prefs ->
         UserPreferences(
             baselineIpdPx = prefs[Keys.BASELINE_IPD_PX] ?: 0f,
             isCalibrated = prefs[Keys.IS_CALIBRATED] ?: false,
-            minDistanceThresholdCm = prefs[Keys.MIN_DISTANCE_CM] ?: 30,
+            minDistanceThresholdCm = prefs[Keys.MIN_DISTANCE_CM] ?: 25,
             maxNeckAngleThresholdDeg = prefs[Keys.MAX_NECK_ANGLE_DEG] ?: 30,
             minLuxThreshold = prefs[Keys.MIN_LUX_THRESHOLD] ?: 80,
             eyeBreakIntervalMinutes = prefs[Keys.EYE_BREAK_MINUTES] ?: 20,
             debugTelemetryEnabled = prefs[Keys.DEBUG_TELEMETRY] ?: false,
             hapticsEnabled = prefs[Keys.HAPTICS_ENABLED] ?: true,
+            geminiApiKey = prefs[Keys.GEMINI_API_KEY] ?: "",
         )
     }
 
@@ -61,7 +64,7 @@ class UserCalibrationDataStore @Inject constructor(
     }
 
     suspend fun updateMinDistanceThreshold(cm: Int) {
-        context.lumiDataStore.edit { it[Keys.MIN_DISTANCE_CM] = cm.coerceIn(20, 45) }
+        context.lumiDataStore.edit { it[Keys.MIN_DISTANCE_CM] = cm.coerceIn(15, 40) }
     }
 
     suspend fun updateMaxNeckAngleThreshold(deg: Int) {
@@ -82,5 +85,9 @@ class UserCalibrationDataStore @Inject constructor(
 
     suspend fun setHapticsEnabled(enabled: Boolean) {
         context.lumiDataStore.edit { it[Keys.HAPTICS_ENABLED] = enabled }
+    }
+
+    suspend fun updateGeminiApiKey(apiKey: String) {
+        context.lumiDataStore.edit { it[Keys.GEMINI_API_KEY] = apiKey.trim() }
     }
 }

@@ -98,7 +98,7 @@ class ErgonomicScoreCalculator @Inject constructor() {
         if (isProximityTriggered || distanceCm <= 10f) {
             return 10 to MetricStatus.CRITICAL
         }
-        val optimalFloor = (minDistanceCm + 8f).coerceAtLeast(38f)
+        val optimalFloor = (minDistanceCm + 5f).coerceAtLeast(30f)
         val score = when {
             distanceCm >= optimalFloor -> 100
             distanceCm >= minDistanceCm -> {

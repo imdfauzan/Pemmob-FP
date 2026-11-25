@@ -218,7 +218,7 @@ fun CalibrationScreen(
                                 color = HudTextPrimary,
                             )
                             Text(
-                                text = "Pegang ponsel pada jarak nyaman (~40 cm)",
+                                text = "Pegang ponsel pada jarak nyaman (~30 cm)",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = HudTextSecondary,
                             )

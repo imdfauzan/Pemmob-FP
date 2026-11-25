@@ -75,7 +75,7 @@ data class SensorSnapshot(
     val totalBlinks: Int = 0,
     val eyeSquintAvg: Float = 0f,
     val isDrowsyEyesClosed: Boolean = false,
-    val distanceCm: Float = 40f,
+    val distanceCm: Float = 30f,
     val isProximityTriggered: Boolean = false,
     val devicePitchDeg: Float = 10f,
     val headPitchDeg: Float = 0f,

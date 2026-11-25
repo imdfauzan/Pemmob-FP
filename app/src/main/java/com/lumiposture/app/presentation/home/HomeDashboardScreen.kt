@@ -31,6 +31,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -105,7 +106,7 @@ fun HomeDashboardScreen(
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "Lakukan kalibrasi 10 detik pada jarak 40 cm untuk akurasi estimasi jarak.",
+                                text = "Lakukan kalibrasi 10 detik pada jarak 30 cm untuk akurasi estimasi jarak.",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = colors.textSecondary,
                             )
@@ -175,6 +176,8 @@ fun HomeDashboardScreen(
                     text = "Posisi Perangkat",
                     style = MaterialTheme.typography.labelLarge,
                     color = colors.textSecondary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(modifier = Modifier.height(8.dp))
 

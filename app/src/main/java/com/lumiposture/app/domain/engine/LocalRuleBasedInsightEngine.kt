@@ -37,7 +37,7 @@ class LocalRuleBasedInsightEngine @Inject constructor() {
 
         val hasGlare = (input.avgAmbientLux < 80f) && (input.avgScreenBrightnessPct > 65)
         val hasLowBlink = input.avgBlinkRateBpm < 10f || input.minBlinkRateBpm < 8f
-        val hasCloseDistance = input.avgDistanceCm < 30f || input.tooCloseDurationSec >= 30
+        val hasCloseDistance = input.avgDistanceCm < 25f || input.tooCloseDurationSec >= 30
         val hasTechNeck = input.avgNeckAngleDeg >= 30f || input.techNeckDurationSec >= 60
         val hasHighNoise = input.peakNoiseDb > 65f || input.avgNoiseDb > 60f
 
@@ -114,7 +114,7 @@ class LocalRuleBasedInsightEngine @Inject constructor() {
             }
         }
         if (hasCloseDistance) {
-            recommendations += "Pertahankan jarak layar minimal 35-45 cm dari wajah selama sesi membaca."
+            recommendations += "Pertahankan jarak layar minimal 30-40 cm dari wajah selama sesi membaca."
         }
         if (hasLowBlink) {
             recommendations += "Terapkan jeda 20-20-20 secara berkala: lihat objek sejauh 6 meter selama 20 detik dan berkedip sadar."
@@ -124,7 +124,7 @@ class LocalRuleBasedInsightEngine @Inject constructor() {
         }
         while (recommendations.size < 3) {
             val filler = when (recommendations.size) {
-                0 -> "Pertahankan jarak pandang 40 cm dan sudut leher di bawah 20 derajat pada sesi berikutnya."
+                0 -> "Pertahankan jarak pandang minimal 30 cm dan sudut leher di bawah 20 derajat pada sesi berikutnya."
                 1 -> "Lakukan jeda 20-20-20 setiap 20 menit untuk menjaga kelembapan permukaan mata."
                 else -> "Pastikan pencahayaan ruang tetap merata di kisaran 150-350 Lux tanpa silau langsung."
             }

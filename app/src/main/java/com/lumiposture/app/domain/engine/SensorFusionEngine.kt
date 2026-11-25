@@ -143,8 +143,8 @@ class SensorFusionEngine @Inject constructor(
     }
 
     companion object {
-        const val BASELINE_DISTANCE_CM = 40f
-        const val DEFAULT_BASELINE_IPD_PX = 86f
+        const val BASELINE_DISTANCE_CM = 30f
+        const val DEFAULT_BASELINE_IPD_PX = 115f
         const val DISTANCE_EMA_ALPHA = 0.30f
         const val NECK_EMA_ALPHA = 0.35f
     }

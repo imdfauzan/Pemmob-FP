@@ -7,6 +7,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -22,6 +24,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.lumiposture.app.presentation.components.TabularMetricText
 import com.lumiposture.app.presentation.theme.LumiTheme
 
@@ -65,56 +68,79 @@ fun LiveErgonomicGauge(
         else -> "Berisiko"
     }
 
-    Box(
-        modifier = modifier.size(size),
-        contentAlignment = Alignment.Center,
+    val isCompact = size <= 124.dp
+    val strokeDp = (size * 0.08f).coerceIn(8.dp, 12.dp)
+    val scoreFontSize = if (isCompact) 30.sp else 36.sp
+    val statusFontSize = if (isCompact) 11.sp else 12.sp
+
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Canvas(modifier = Modifier.size(size)) {
-            val strokePx = 11.dp.toPx()
-            val inset = strokePx / 2f
-            val arcSize = Size(this.size.width - strokePx, this.size.height - strokePx)
-            val topLeft = Offset(inset, inset)
-
-            drawArc(
-                color = trackColor,
-                startAngle = 140f,
-                sweepAngle = 260f,
-                useCenter = false,
-                topLeft = topLeft,
-                size = arcSize,
-                style = Stroke(width = strokePx, cap = StrokeCap.Round),
-            )
-
-            drawArc(
-                color = animatedAccent,
-                startAngle = 140f,
-                sweepAngle = 260f * animatedProgress,
-                useCenter = false,
-                topLeft = topLeft,
-                size = arcSize,
-                style = Stroke(width = strokePx, cap = StrokeCap.Round),
-            )
-        }
-
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
+        Box(
+            modifier = Modifier.size(size),
+            contentAlignment = Alignment.Center,
         ) {
-            TabularMetricText(
-                text = score.toString(),
-                style = MaterialTheme.typography.displayMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = textColor,
-            )
-            Text(
-                text = statusText,
-                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = animatedAccent,
-            )
-            Text(
-                text = "SKOR ERGONOMI",
-                style = MaterialTheme.typography.labelSmall,
-                color = subTextColor,
-            )
+            Canvas(modifier = Modifier.size(size)) {
+                val strokePx = strokeDp.toPx()
+                val inset = strokePx / 2f
+                val arcSize = Size(this.size.width - strokePx, this.size.height - strokePx)
+                val topLeft = Offset(inset, inset)
+
+                drawArc(
+                    color = trackColor,
+                    startAngle = 140f,
+                    sweepAngle = 260f,
+                    useCenter = false,
+                    topLeft = topLeft,
+                    size = arcSize,
+                    style = Stroke(width = strokePx, cap = StrokeCap.Round),
+                )
+
+                drawArc(
+                    color = animatedAccent,
+                    startAngle = 140f,
+                    sweepAngle = 260f * animatedProgress,
+                    useCenter = false,
+                    topLeft = topLeft,
+                    size = arcSize,
+                    style = Stroke(width = strokePx, cap = StrokeCap.Round),
+                )
+            }
+
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                TabularMetricText(
+                    text = score.toString(),
+                    style = MaterialTheme.typography.displayMedium.copy(
+                        fontSize = scoreFontSize,
+                        lineHeight = scoreFontSize,
+                        fontWeight = FontWeight.SemiBold,
+                    ),
+                    color = textColor,
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = statusText,
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontSize = statusFontSize,
+                        fontWeight = FontWeight.SemiBold,
+                    ),
+                    color = animatedAccent,
+                )
+            }
         }
+
+        Text(
+            text = "SKOR ERGONOMI",
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 10.sp,
+                letterSpacing = 0.8.sp,
+                fontWeight = FontWeight.SemiBold,
+            ),
+            color = subTextColor,
+        )
     }
 }

@@ -3,7 +3,7 @@ package com.lumiposture.app.domain.usecase
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
-import com.lumiposture.app.BuildConfig
+import com.lumiposture.app.data.local.prefs.UserCalibrationDataStore
 import com.lumiposture.app.data.remote.GeminiApiService
 import com.lumiposture.app.data.remote.dto.GeminiContent
 import com.lumiposture.app.data.remote.dto.GeminiGenerateContentRequest
@@ -21,6 +21,7 @@ import com.lumiposture.app.domain.model.StudyMode
 import com.lumiposture.app.domain.model.TelemetrySamplePoint
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import javax.inject.Inject
@@ -30,6 +31,7 @@ class AnalyzeSessionWithAiUseCase @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val geminiApiService: GeminiApiService,
     private val localFallbackEngine: LocalRuleBasedInsightEngine,
+    private val userDataStore: UserCalibrationDataStore,
     private val json: Json,
 ) {
 
@@ -37,7 +39,7 @@ class AnalyzeSessionWithAiUseCase @Inject constructor(
         aggregate: SessionAggregateInput,
         samples: List<TelemetrySamplePoint>,
     ): AiInsight = withContext(Dispatchers.IO) {
-        val apiKey = BuildConfig.GEMINI_API_KEY
+        val apiKey = userDataStore.preferencesFlow.first().geminiApiKey.trim()
         if (apiKey.isBlank() || !isNetworkAvailable()) {
             return@withContext localFallbackEngine.generate(aggregate)
         }
@@ -115,7 +117,7 @@ class AnalyzeSessionWithAiUseCase @Inject constructor(
                 overallScore = overallScore,
                 avgBlinkRateBpm = 15f,
                 minBlinkRateBpm = 15f,
-                avgDistanceCm = 40f,
+                avgDistanceCm = 30f,
                 tooCloseDurationSec = 0,
                 avgNeckAngleDeg = 12f,
                 techNeckDurationSec = 0,
@@ -128,7 +130,7 @@ class AnalyzeSessionWithAiUseCase @Inject constructor(
         val avgBlink = samples.map { it.blinkRateBpm }.average().toFloat()
         val minBlink = samples.minOf { it.blinkRateBpm }
         val avgDist = samples.map { it.distanceCm }.average().toFloat()
-        val tooCloseSec = samples.count { it.distanceCm < 30f } * SAMPLE_STEP_SEC
+        val tooCloseSec = samples.count { it.distanceCm < 25f } * SAMPLE_STEP_SEC
         val avgNeck = samples.map { it.neckAngleDeg }.average().toFloat()
         val techNeckSec = samples.count { it.neckAngleDeg >= 30f } * SAMPLE_STEP_SEC
         val avgLux = samples.map { it.ambientLux }.average().toFloat()

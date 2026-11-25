@@ -30,7 +30,7 @@ class DomainEnginesTest {
         val result = scoreCalculator.calculate(
             blinkRateBpm = 16f,
             eyeSquintAvg = 0.1f,
-            distanceCm = 42f,
+            distanceCm = 30f,
             isProximityTriggered = false,
             neckAngleDeg = 12f,
             isLyingDown = false,
@@ -53,7 +53,7 @@ class DomainEnginesTest {
         val result = scoreCalculator.calculate(
             blinkRateBpm = 7f,
             eyeSquintAvg = 0.55f,
-            distanceCm = 22f,
+            distanceCm = 18f,
             isProximityTriggered = false,
             neckAngleDeg = 38f,
             isLyingDown = false,
@@ -98,7 +98,7 @@ class DomainEnginesTest {
     }
 
     @Test
-    fun sensorFusion_ipdRatio_estimates40CmWhenIpdMatchesBaseline() {
+    fun sensorFusion_ipdRatio_estimates30CmWhenIpdMatchesBaseline() {
         fusionEngine.resetSmoothing()
         val snap = fusionEngine.fuseSingleTick(
             vision = VisionTelemetry(
@@ -117,20 +117,20 @@ class DomainEnginesTest {
             sessionStartTimeMs = 0L,
         )
 
-        assertEquals(40f, snap.distanceCm, 0.5f)
+        assertEquals(30f, snap.distanceCm, 0.5f)
         assertEquals(22f, snap.neckAngleDeg, 0.5f)
     }
 
     @Test
     fun interventionManager_distancePersistence_triggersOnlyAfter5Seconds() {
         val manager = AdaptiveInterventionManager()
-        val prefs = UserPreferences(minDistanceThresholdCm = 30)
+        val prefs = UserPreferences(minDistanceThresholdCm = 25)
         manager.reset(nowMs = 0L)
 
         val closeSnapStart = SensorSnapshot(
             timestampMs = 1_000L,
             faceDetected = true,
-            distanceCm = 24f,
+            distanceCm = 20f,
         )
         assertEquals(ActiveAlert.None, manager.evaluate(closeSnapStart, prefs))
 

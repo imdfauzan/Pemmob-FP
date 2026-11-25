@@ -245,13 +245,19 @@ fun <T> PillSegmentedControl(
     val selectedIndex = options.indexOf(selectedOption).coerceAtLeast(0)
     val colors = LumiTheme.colors
 
-    GlassSurface(
-        modifier = modifier.height(46.dp),
-        hazeState = hazeState,
-        shape = PillShape,
-        isDarkOverlay = isDarkOverlay,
-        contentPadding = PaddingValues(4.dp),
-    ) {
+    val trackModifier = if (isDarkOverlay) {
+        modifier.height(48.dp)
+    } else {
+        val trackBg = if (colors.isDark) Color(0xFF1A1F2B) else Color(0xFFF2F5FA)
+        modifier
+            .height(48.dp)
+            .clip(PillShape)
+            .background(trackBg, PillShape)
+            .border(0.75.dp, colors.subtleOutline, PillShape)
+            .padding(4.dp)
+    }
+
+    val containerContent: @Composable () -> Unit = {
         BoxWithConstraints(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
             val segmentWidth = maxWidth / options.size.coerceAtLeast(1)
             val indicatorOffset by animateDpAsState(
@@ -263,11 +269,14 @@ fun <T> PillSegmentedControl(
                 label = "segmentIndicator",
             )
             val pillColor = if (isDarkOverlay) {
-                Color.White.copy(alpha = 0.20f)
-            } else if (colors.isDark) {
-                Color.White.copy(alpha = 0.14f)
+                colors.primary.copy(alpha = 0.34f)
             } else {
-                colors.cardSurface
+                colors.primary.copy(alpha = 0.14f)
+            }
+            val pillBorderColor = if (isDarkOverlay) {
+                colors.primary.copy(alpha = 0.55f)
+            } else {
+                colors.primary.copy(alpha = 0.24f)
             }
 
             Box(
@@ -276,7 +285,8 @@ fun <T> PillSegmentedControl(
                     .width(segmentWidth)
                     .fillMaxHeight()
                     .clip(PillShape)
-                    .background(pillColor, PillShape),
+                    .background(pillColor, PillShape)
+                    .border(0.75.dp, pillBorderColor, PillShape),
             )
 
             Row(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
@@ -286,7 +296,7 @@ fun <T> PillSegmentedControl(
                         targetValue = when {
                             isDarkOverlay && isSelected -> Color.White
                             isDarkOverlay -> Color.White.copy(alpha = 0.72f)
-                            isSelected -> colors.textPrimary
+                            isSelected -> colors.primary
                             else -> colors.textSecondary
                         },
                         label = "segmentTextColor",
@@ -314,6 +324,22 @@ fun <T> PillSegmentedControl(
                     }
                 }
             }
+        }
+    }
+
+    if (isDarkOverlay) {
+        GlassSurface(
+            modifier = trackModifier,
+            hazeState = hazeState,
+            shape = PillShape,
+            isDarkOverlay = true,
+            contentPadding = PaddingValues(4.dp),
+        ) {
+            containerContent()
+        }
+    } else {
+        Box(modifier = trackModifier) {
+            containerContent()
         }
     }
 }

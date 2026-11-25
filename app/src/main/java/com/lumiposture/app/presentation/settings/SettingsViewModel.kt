@@ -2,7 +2,6 @@ package com.lumiposture.app.presentation.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.lumiposture.app.BuildConfig
 import com.lumiposture.app.data.local.prefs.UserCalibrationDataStore
 import com.lumiposture.app.data.repository.SessionRepository
 import com.lumiposture.app.data.sensor.EnvironmentSensorManager
@@ -19,7 +18,7 @@ import javax.inject.Inject
 data class SettingsUiState(
     val preferences: UserPreferences = UserPreferences(),
     val capabilities: SensorCapabilities = SensorCapabilities(),
-    val isGeminiKeyConfigured: Boolean = BuildConfig.GEMINI_API_KEY.isNotBlank(),
+    val isGeminiKeyConfigured: Boolean = false,
 )
 
 @HiltViewModel
@@ -36,7 +35,7 @@ class SettingsViewModel @Inject constructor(
             SettingsUiState(
                 preferences = prefs,
                 capabilities = caps,
-                isGeminiKeyConfigured = BuildConfig.GEMINI_API_KEY.isNotBlank(),
+                isGeminiKeyConfigured = prefs.geminiApiKey.isNotBlank(),
             )
         }
         .stateIn(
@@ -67,6 +66,14 @@ class SettingsViewModel @Inject constructor(
 
     fun setHapticsEnabled(enabled: Boolean) {
         viewModelScope.launch { userDataStore.setHapticsEnabled(enabled) }
+    }
+
+    fun saveGeminiApiKey(apiKey: String) {
+        viewModelScope.launch { userDataStore.updateGeminiApiKey(apiKey) }
+    }
+
+    fun clearGeminiApiKey() {
+        viewModelScope.launch { userDataStore.updateGeminiApiKey("") }
     }
 
     fun clearAllHistory() {
