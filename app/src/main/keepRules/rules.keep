@@ -1,0 +1,9 @@
+# Add project specific R8 rules here.
+# AGP will combine all keep rule files in src/main/keepRules to pass to R8
+
+-keepattributes *Annotation*, InnerClasses, Signature
+-keepclassmembers class * {
+    @kotlinx.serialization.Serializable <init>(...);
+}
+-keep,includedescriptorclasses class com.lumiposture.app.data.remote.dto.** { *; }
+-keep class com.google.mediapipe.** { *; }
