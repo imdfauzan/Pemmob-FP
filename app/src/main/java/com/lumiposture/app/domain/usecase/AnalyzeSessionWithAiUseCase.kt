@@ -132,7 +132,7 @@ class AnalyzeSessionWithAiUseCase @Inject constructor(
                     } else if (code == 429) {
                         "Kuota Gemini API terlampaui sementara (HTTP 429)."
                     } else {
-                        "Layanan Gemini mengembalikan error HTTP $code."
+                        "Error HTTP $code pada Gemini."
                     }
                 }
                 else -> "Koneksi ke Gemini gagal: ${error.localizedMessage ?: "cek jaringan atau API key"}."

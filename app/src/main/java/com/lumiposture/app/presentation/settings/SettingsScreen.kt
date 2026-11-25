@@ -99,13 +99,13 @@ fun SettingsScreen(
         item {
             LumiCard {
                 Text(
-                    text = "Konfigurasi Gemini API Key",
+                    text = "Gemini API Key",
                     style = MaterialTheme.typography.titleLarge,
                     color = colors.textPrimary,
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    text = "Digunakan untuk analisis korelasi multi-sensor pasca-sesi. Key disimpan secara lokal di perangkat Anda.",
+                    text = "Digunakan untuk menganalisis hasil pengecekan Ergonomi.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = colors.textSecondary,
                 )
@@ -251,7 +251,7 @@ fun SettingsScreen(
         item {
             LumiCard {
                 Text(
-                    text = "Preferensi & Mode Presentasi",
+                    text = "Preferensi",
                     style = MaterialTheme.typography.titleLarge,
                     color = colors.textPrimary,
                 )
@@ -279,7 +279,7 @@ fun SettingsScreen(
         item {
             LumiCard {
                 Text(
-                    text = "Kontrol Sensor & Status Sistem",
+                    text = "Status Sistem & Sensor",
                     style = MaterialTheme.typography.titleLarge,
                     color = colors.textPrimary,
                 )
@@ -293,7 +293,7 @@ fun SettingsScreen(
                 SensorToggleRow(
                     title = "Kamera Depan",
                     hardwareAvailable = caps.hasFrontCamera,
-                    description = "Vision AI untuk kedipan mata, jarak IPD, dan head pitch",
+                    description = "Pendeteksi kedipan mata, jarak IPD, dan head pitch",
                     checked = prefs.enableFrontCamera && caps.hasFrontCamera,
                     onCheckedChange = viewModel::setFrontCameraEnabled,
                 )
@@ -302,7 +302,7 @@ fun SettingsScreen(
                 SensorToggleRow(
                     title = "Ambient Light (Lux)",
                     hardwareAvailable = caps.hasLightSensor,
-                    description = "Pemantauan intensitas cahaya ruang terhadap layar",
+                    description = "Pemantauan intensitas cahaya ruangan",
                     checked = prefs.enableLightSensor && caps.hasLightSensor,
                     onCheckedChange = viewModel::setLightSensorEnabled,
                 )
@@ -311,7 +311,7 @@ fun SettingsScreen(
                 SensorToggleRow(
                     title = "Proximity Sensor",
                     hardwareAvailable = caps.hasProximitySensor,
-                    description = "Pengaman jarak sangat dekat (< 10 cm)",
+                    description = "Mengukur jarak HP ke wajah",
                     checked = prefs.enableProximitySensor && caps.hasProximitySensor,
                     onCheckedChange = viewModel::setProximitySensorEnabled,
                 )
@@ -320,7 +320,7 @@ fun SettingsScreen(
                 SensorToggleRow(
                     title = "Accelerometer",
                     hardwareAvailable = caps.hasAccelerometer,
-                    description = "Deteksi kemiringan perangkat dan postur tiduran",
+                    description = "Mendeteksi kemiringan HP dan postur",
                     checked = prefs.enableAccelerometer && caps.hasAccelerometer,
                     onCheckedChange = viewModel::setAccelerometerEnabled,
                 )
@@ -330,7 +330,7 @@ fun SettingsScreen(
                 SensorToggleRow(
                     title = "Gyroscope",
                     hardwareAvailable = hasGyroOrFusion,
-                    description = "Stabilisasi sudut kemiringan Rotation Vector",
+                    description = "Menstabilisasi sudut kemiringan HP",
                     checked = prefs.enableGyroscope && hasGyroOrFusion,
                     onCheckedChange = viewModel::setGyroscopeEnabled,
                 )
@@ -339,7 +339,7 @@ fun SettingsScreen(
                 SensorToggleRow(
                     title = "Mikrofon (dB)",
                     hardwareAvailable = caps.hasMicrophone,
-                    description = "Pengukuran kebisingan lingkungan tanpa merekam audio",
+                    description = "Pengukur kebisingan sekitar tanpa merekam audio",
                     checked = prefs.enableMicrophone && caps.hasMicrophone,
                     onCheckedChange = viewModel::setMicrophoneEnabled,
                 )

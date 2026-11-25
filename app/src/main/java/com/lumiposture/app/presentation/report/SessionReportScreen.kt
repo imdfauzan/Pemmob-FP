@@ -104,7 +104,7 @@ fun SessionReportScreen(
                 }
                 Column {
                     Text(
-                        text = "Hasil Pengecekan Ergonomi",
+                        text = "Hasil Pengecekan",
                         style = MaterialTheme.typography.headlineMedium,
                         color = colors.textPrimary,
                     )
@@ -156,7 +156,7 @@ fun SessionReportScreen(
         item {
             LumiCard {
                 Text(
-                    text = "Rata-Rata Telemetri 6 Sensor",
+                    text = "Data Rata-Rata 6 Sensor",
                     style = MaterialTheme.typography.titleLarge,
                     color = colors.textPrimary,
                 )
@@ -195,7 +195,7 @@ fun SessionReportScreen(
                         modifier = Modifier.size(20.dp),
                     )
                     Text(
-                        text = "Grafik Korelasi Sesi",
+                        text = "Grafik Korelasi",
                         style = MaterialTheme.typography.titleLarge,
                         color = colors.textPrimary,
                     )
