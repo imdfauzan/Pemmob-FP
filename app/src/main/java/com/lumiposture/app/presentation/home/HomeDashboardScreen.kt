@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lumiposture.app.domain.model.MetricStatus
+import com.lumiposture.app.presentation.components.metric
 import com.lumiposture.app.domain.model.StudyMode
 import com.lumiposture.app.domain.model.StudySessionSummary
 import com.lumiposture.app.presentation.components.LumiCard
@@ -141,13 +142,7 @@ fun HomeDashboardScreen(
                         val latest = uiState.latestSession
                         if (latest != null) {
                             Text(
-                                text = String.format(
-                                    Locale.US,
-                                    "Kedipan %.1f BPM · Jarak %.0f cm · Leher %.0f deg",
-                                    latest.avgBlinkRate,
-                                    latest.avgDistanceCm,
-                                    latest.avgNeckAngleDeg,
-                                ),
+                                text = "Kedipan ${latest.avgBlinkRate.metric("BPM")} · Est. jarak ${latest.avgDistanceCm.metric("cm", 0)}",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = colors.textSecondary,
                             )
@@ -157,7 +152,7 @@ fun HomeDashboardScreen(
                             )
                         } else {
                             Text(
-                                text = "Pantau kedipan, jarak layar, leher, cahaya, dan kebisingan secara real-time.",
+                                text = "Pantau estimasi kedipan, jarak, orientasi, cahaya, dan amplitudo mikrofon saat belajar.",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = colors.textSecondary,
                             )
@@ -165,7 +160,10 @@ fun HomeDashboardScreen(
                     }
 
                     LiveErgonomicGauge(
-                        score = uiState.latestSession?.overallScore ?: 100,
+                        score = uiState.latestSession?.overallScore,
+                        isPartial = uiState.latestSession?.let { session ->
+                            session.overallScore != null && listOf(session.avgBlinkRate, session.avgDistanceCm, session.avgNeckAngleDeg, session.avgLux).any { it == null }
+                        } ?: false,
                         size = 112.dp,
                     )
                 }
@@ -290,7 +288,7 @@ private fun WeeklyScoreBarChart(
                     cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f),
                 )
 
-                if (point.avgScore > 0) {
+                if (point.avgScore != null && point.avgScore > 0) {
                     val barHeight = (maxHeight * (point.avgScore / 100f)).coerceAtLeast(8.dp.toPx())
                     val topY = 4.dp.toPx() + (maxHeight - barHeight)
                     val barColor = when {
@@ -353,7 +351,7 @@ fun SessionCompactItem(
                     color = colors.textPrimary,
                 )
                 TabularMetricText(
-                    text = "$durationMin mnt · ${String.format(Locale.US, "%.1f", session.avgBlinkRate)} BPM · ${String.format(Locale.US, "%.0f", session.avgDistanceCm)} cm",
+                    text = "$durationMin mnt · ${session.avgBlinkRate.metric("BPM")} · ${session.avgDistanceCm.metric("cm", 0)}",
                     style = MaterialTheme.typography.bodyMedium,
                     color = colors.textSecondary,
                 )
@@ -364,9 +362,10 @@ fun SessionCompactItem(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 TabularMetricText(
-                    text = session.overallScore.toString(),
+                    text = session.overallScore?.toString() ?: "N/A",
                     style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.SemiBold),
                     color = when (scoreToStatus(session.overallScore)) {
+                        MetricStatus.UNAVAILABLE -> colors.textSecondary
                         MetricStatus.OPTIMAL -> colors.optimal
                         MetricStatus.WARNING -> colors.warning
                         MetricStatus.CRITICAL -> colors.critical
@@ -382,13 +381,15 @@ fun SessionCompactItem(
     }
 }
 
-fun scoreToStatus(score: Int): MetricStatus = when {
+fun scoreToStatus(score: Int?): MetricStatus = when {
+    score == null -> MetricStatus.UNAVAILABLE
     score >= 80 -> MetricStatus.OPTIMAL
     score >= 60 -> MetricStatus.WARNING
     else -> MetricStatus.CRITICAL
 }
 
-fun statusLabelForScore(score: Int): String = when {
+fun statusLabelForScore(score: Int?): String = when {
+    score == null -> "Data belum cukup"
     score >= 85 -> "Optimal"
     score >= 70 -> "Cukup Baik"
     score >= 50 -> "Perlu Perhatian"

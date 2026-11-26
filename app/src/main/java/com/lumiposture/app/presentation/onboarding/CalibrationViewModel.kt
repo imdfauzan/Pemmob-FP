@@ -7,6 +7,7 @@ import com.lumiposture.app.data.sensor.EnvironmentSensorManager
 import com.lumiposture.app.data.sensor.FaceLandmarkerHelper
 import com.lumiposture.app.domain.model.SensorCapabilities
 import com.lumiposture.app.domain.model.VisionTelemetry
+import com.lumiposture.app.domain.model.DataStatus
 import com.lumiposture.app.domain.usecase.CalculateBaselineCalibrationUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -47,21 +48,31 @@ class CalibrationViewModel @Inject constructor(
     private val ipdSamples = mutableListOf<Float>()
 
     init {
-        faceLandmarkerHelper.initialize()
-        faceLandmarkerHelper.resetSessionCounters()
 
         viewModelScope.launch {
             faceLandmarkerHelper.telemetryFlow.collect { vision ->
+                if (_uiState.value.isCalibrating && vision.status == DataStatus.AVAILABLE && vision.faceDetected && vision.ipdPixels > 10f &&
+                    System.currentTimeMillis() - vision.timestampMs in 0..2000) ipdSamples += vision.ipdPixels
                 _uiState.update { state ->
-                    if (state.isCalibrating && (vision.faceDetected && vision.ipdPixels > 10f)) {
-                        ipdSamples += vision.ipdPixels
-                    }
                     state.copy(
                         visionTelemetry = vision,
                         collectedSamplesCount = ipdSamples.size,
                     )
                 }
             }
+        }
+    }
+
+    fun setForeground(active: Boolean) {
+        if (active) { faceLandmarkerHelper.resetSessionCounters(); faceLandmarkerHelper.initialize() }
+        else { cancelCalibration(); faceLandmarkerHelper.close() }
+    }
+
+    fun skipCalibration() {
+        cancelCalibration()
+        viewModelScope.launch {
+            userDataStore.completeOnboarding()
+            _uiState.update { it.copy(calibrationCompleted = true) }
         }
     }
 
@@ -75,7 +86,7 @@ class CalibrationViewModel @Inject constructor(
     }
 
     fun startCalibration() {
-        if (_uiState.value.isCalibrating) return
+        if (_uiState.value.isCalibrating || !_uiState.value.permissionsGranted || !_uiState.value.visionTelemetry.faceDetected) return
         ipdSamples.clear()
         calibrationJob?.cancel()
         calibrationJob = viewModelScope.launch {

@@ -16,7 +16,7 @@ import kotlin.math.roundToInt
 data class HistoryUiState(
     val sessions: List<StudySessionSummary> = emptyList(),
     val totalMinutesAllTime: Int = 0,
-    val averageScoreAllTime: Int = 0,
+    val averageScoreAllTime: Int? = null,
 )
 
 @HiltViewModel
@@ -27,11 +27,7 @@ class HistoryViewModel @Inject constructor(
     val uiState: StateFlow<HistoryUiState> = sessionRepository.observeAllSessions()
         .map { list ->
             val totalMin = (list.sumOf { it.durationSeconds } / 60f).roundToInt()
-            val avgScore = if (list.isNotEmpty()) {
-                list.asSequence().map { it.overallScore }.average().roundToInt()
-            } else {
-                0
-            }
+            val avgScore = list.mapNotNull { it.overallScore }.takeIf { it.isNotEmpty() }?.average()?.roundToInt()
             HistoryUiState(
                 sessions = list,
                 totalMinutesAllTime = totalMin,

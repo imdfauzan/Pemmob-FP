@@ -4,7 +4,7 @@ sealed interface ActiveAlert {
     data object None : ActiveAlert
 
     data class DistanceWarning(
-        val distanceCm: Float,
+        val distanceCm: Float?,
         val isCriticalProximity: Boolean,
         val message: String,
     ) : ActiveAlert
@@ -22,7 +22,7 @@ sealed interface ActiveAlert {
     ) : ActiveAlert
 
     data class EyeBreakRequired(
-        val blinkRateBpm: Float,
+        val blinkRateBpm: Float?,
         val squintLevel: Float,
         val reason: String,
     ) : ActiveAlert

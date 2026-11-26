@@ -17,6 +17,9 @@ import com.lumiposture.app.domain.model.SensorSnapshot
 import com.lumiposture.app.domain.model.StudyMode
 import com.lumiposture.app.domain.model.TelemetrySamplePoint
 import com.lumiposture.app.domain.model.UserPreferences
+import com.lumiposture.app.domain.model.DataStatus
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.CancellationException
 import com.lumiposture.app.domain.usecase.AnalyzeSessionWithAiUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -42,6 +45,8 @@ data class ActiveSessionUiState(
     val debugTelemetryEnabled: Boolean = false,
     val isEndingSession: Boolean = false,
     val completedSessionId: Long? = null,
+    val saveError: String? = null,
+    val isMonitoring: Boolean = false,
 )
 
 @HiltViewModel
@@ -75,17 +80,17 @@ class SessionViewModel @Inject constructor(
     private var monitoringJob: Job? = null
 
     init {
-        faceLandmarkerHelper.initialize()
         faceLandmarkerHelper.resetSessionCounters()
         sensorFusionEngine.resetSmoothing()
         interventionManager.reset(sessionStartMillis)
-        startMonitoring()
     }
 
     @OptIn(kotlinx.coroutines.FlowPreview::class)
     private fun startMonitoring() {
-        monitoringJob?.cancel()
+        val previous = monitoringJob
+        previous?.cancel()
         monitoringJob = viewModelScope.launch {
+            previous?.join()
             launch {
                 userDataStore.preferencesFlow.collect { prefs ->
                     currentPrefs = prefs
@@ -140,10 +145,29 @@ class SessionViewModel @Inject constructor(
         }
     }
 
+    fun setForeground(active: Boolean, cameraGranted: Boolean) {
+        if (_uiState.value.isEndingSession || _uiState.value.completedSessionId != null) return
+        if (!active) {
+            monitoringJob?.cancel()
+            faceLandmarkerHelper.reportStatus(DataStatus.WAITING)
+            interventionManager.clearContinuousViolations()
+            val elapsed = ((System.currentTimeMillis() - sessionStartMillis) / 1000).toInt()
+            telemetryBuffer += TelemetrySamplePoint(elapsed, null, null, null, null, null, null, false)
+            _uiState.update { it.copy(isMonitoring = false, activeAlert = ActiveAlert.None, snapshot = SensorSnapshot(elapsedSeconds = it.snapshot.elapsedSeconds)) }
+        } else if (monitoringJob?.isActive != true) {
+            faceLandmarkerHelper.resetSessionCounters()
+            if (cameraGranted) faceLandmarkerHelper.initialize()
+            if (!cameraGranted) faceLandmarkerHelper.reportStatus(DataStatus.PERMISSION_DENIED)
+            sensorFusionEngine.resetSmoothing()
+            _uiState.update { it.copy(isMonitoring = true) }
+            startMonitoring()
+        }
+    }
+
     private fun recordSampleIfDue(snapshot: SensorSnapshot) {
         if (snapshot.elapsedSeconds - lastSampleElapsedSec >= 10) {
             lastSampleElapsedSec = snapshot.elapsedSeconds
-            brightnessSamples += snapshot.screenBrightnessPct
+            snapshot.screenBrightnessPct?.let { brightnessSamples += it }
             telemetryBuffer += TelemetrySamplePoint(
                 elapsedSeconds = snapshot.elapsedSeconds,
                 ergonomicScore = snapshot.ergonomicScore,
@@ -153,6 +177,7 @@ class SessionViewModel @Inject constructor(
                 ambientLux = snapshot.ambientLux,
                 noiseDb = snapshot.noiseDb,
                 isViolationActive = snapshot.hasAnyViolation,
+                screenBrightnessPct = snapshot.screenBrightnessPct,
             )
         }
     }
@@ -196,11 +221,14 @@ class SessionViewModel @Inject constructor(
     }
 
     fun endSession() {
-        if (_uiState.value.isEndingSession) return
-        _uiState.update { it.copy(isEndingSession = true) }
+        if (_uiState.value.isEndingSession || _uiState.value.completedSessionId != null) return
+        _uiState.update { it.copy(isEndingSession = true, isMonitoring = false, saveError = null) }
         monitoringJob?.cancel()
 
         viewModelScope.launch {
+            monitoringJob?.cancelAndJoin()
+            faceLandmarkerHelper.close()
+            try {
             val endMillis = System.currentTimeMillis()
             val durationSec = ((endMillis - sessionStartMillis) / 1000L).toInt().coerceAtLeast(1)
             val latestSnap = _uiState.value.snapshot
@@ -215,15 +243,16 @@ class SessionViewModel @Inject constructor(
                     ambientLux = latestSnap.ambientLux,
                     noiseDb = latestSnap.noiseDb,
                     isViolationActive = latestSnap.hasAnyViolation,
+                    screenBrightnessPct = latestSnap.screenBrightnessPct,
                 )
             }
             if (brightnessSamples.isEmpty()) {
-                brightnessSamples += latestSnap.screenBrightnessPct
+                latestSnap.screenBrightnessPct?.let { brightnessSamples += it }
             }
 
             val samplesSnapshot = telemetryBuffer.toList()
-            val avgScore = samplesSnapshot.asSequence().map { it.ergonomicScore }.average().roundToInt().coerceIn(0, 100)
-            val avgBrightness = brightnessSamples.average().roundToInt().coerceIn(0, 100)
+            val avgScore = samplesSnapshot.mapNotNull { it.ergonomicScore }.takeIf { it.isNotEmpty() }?.average()?.roundToInt()?.coerceIn(0, 100)
+            val avgBrightness = brightnessSamples.takeIf { it.isNotEmpty() }?.average()?.roundToInt()?.coerceIn(0, 100)
             val mode = studyModeFlow.value
 
             val aggregate = analyzeSessionUseCase.buildAggregateInput(
@@ -232,6 +261,8 @@ class SessionViewModel @Inject constructor(
                 overallScore = avgScore,
                 samples = samplesSnapshot,
                 avgBrightnessPct = avgBrightness,
+                minDistanceCm = currentPrefs.minDistanceThresholdCm,
+                maxOrientationDeg = currentPrefs.maxNeckAngleThresholdDeg,
             )
 
             val insight = analyzeSessionUseCase.analyze(aggregate, samplesSnapshot)
@@ -256,6 +287,11 @@ class SessionViewModel @Inject constructor(
                     isEndingSession = false,
                     completedSessionId = sessionId,
                 )
+            }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                _uiState.update { it.copy(isEndingSession = false, saveError = "Sesi belum tersimpan. Tekan Akhiri Sesi untuk mencoba lagi.") }
             }
         }
     }

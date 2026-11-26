@@ -51,6 +51,8 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import com.lumiposture.app.presentation.components.metric
 import com.lumiposture.app.domain.model.ActiveAlert
 import com.lumiposture.app.domain.model.MetricStatus
 import com.lumiposture.app.domain.model.StudyMode
@@ -63,6 +65,9 @@ import com.lumiposture.app.presentation.session.components.DebugTelemetryOverlay
 import com.lumiposture.app.presentation.session.components.EyeBreakModalDialog
 import com.lumiposture.app.presentation.session.components.LiveErgonomicGauge
 import com.lumiposture.app.presentation.theme.DarkCanvas
+import com.lumiposture.app.presentation.theme.DarkOptimal
+import com.lumiposture.app.presentation.theme.DarkWarning
+import com.lumiposture.app.presentation.theme.DarkCritical
 import com.lumiposture.app.presentation.theme.HudTextPrimary
 import com.lumiposture.app.presentation.theme.HudTextSecondary
 import com.lumiposture.app.presentation.theme.InnerTileShape
@@ -89,10 +94,9 @@ fun ActiveSessionScreen(
         Manifest.permission.CAMERA,
     ) == PackageManager.PERMISSION_GRANTED
 
-    LaunchedEffect(hasCameraPermission) {
-        if (!hasCameraPermission) {
-            onMissingCameraPermission()
-        }
+    LifecycleResumeEffect(Unit) {
+        viewModel.setForeground(true, ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
+        onPauseOrDispose { viewModel.setForeground(false, false) }
     }
 
     LaunchedEffect(uiState.completedSessionId) {
@@ -107,6 +111,8 @@ fun ActiveSessionScreen(
 
     val snapshot = uiState.snapshot
     val prefs = uiState.preferences
+    val scoredMetricCount = listOf(snapshot.blinkStatus, snapshot.distanceStatus, snapshot.postureStatus, snapshot.lightingStatus)
+        .count { it != MetricStatus.UNAVAILABLE }
 
     Box(
         modifier = Modifier
@@ -128,7 +134,7 @@ fun ActiveSessionScreen(
                     frameWidth = snapshot.frameWidth,
                     frameHeight = snapshot.frameHeight,
                     showMeshOverlay = uiState.showMeshOverlay && uiState.showCameraPreview,
-                    isActive = !uiState.isEndingSession && prefs.enableFrontCamera,
+                    isActive = uiState.isMonitoring && !uiState.isEndingSession && prefs.enableFrontCamera,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -138,10 +144,11 @@ fun ActiveSessionScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(DarkCanvas),
-                    contentAlignment = Alignment.Center,
+                    contentAlignment = Alignment.TopCenter,
                 ) {
                     Text(
                         text = "Kamera Depan dinonaktifkan di Setelan",
+                        modifier = Modifier.padding(top = 136.dp, start = 16.dp, end = 16.dp),
                         style = MaterialTheme.typography.bodyMedium,
                         color = HudTextSecondary,
                     )
@@ -151,10 +158,11 @@ fun ActiveSessionScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(DarkCanvas),
-                    contentAlignment = Alignment.Center,
+                    contentAlignment = Alignment.TopCenter,
                 ) {
                     Text(
                         text = "Pratinjau kamera disembunyikan · Pemantauan aktif",
+                        modifier = Modifier.padding(top = 136.dp, start = 16.dp, end = 16.dp),
                         style = MaterialTheme.typography.bodyMedium,
                         color = HudTextSecondary,
                     )
@@ -232,7 +240,7 @@ fun ActiveSessionScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             IconButton(
                                 onClick = viewModel::toggleMeshOverlay,
-                                modifier = Modifier.size(38.dp),
+                                modifier = Modifier.size(44.dp),
                             ) {
                                 Icon(
                                     imageVector = Icons.Rounded.GridOn,
@@ -243,7 +251,7 @@ fun ActiveSessionScreen(
                             }
                             IconButton(
                                 onClick = viewModel::toggleCameraPreview,
-                                modifier = Modifier.size(38.dp),
+                                modifier = Modifier.size(44.dp),
                             ) {
                                 Icon(
                                     imageVector = if (uiState.showCameraPreview) {
@@ -300,22 +308,27 @@ fun ActiveSessionScreen(
                         score = snapshot.ergonomicScore,
                         size = 136.dp,
                         onDarkSurface = true,
+                        isPartial = scoredMetricCount in 1..3,
                     )
                 }
 
+                Text(
+                    text = uiState.saveError ?: when (scoredMetricCount) {
+                        0 -> "Belum ada metrik valid untuk menghitung skor."
+                        in 1..3 -> "Skor parsial: $scoredMetricCount/4 metrik valid. Estimasi, bukan diagnosis."
+                        else -> "4/4 metrik valid. Indeks aturan, bukan diagnosis."
+                    },
+                    color = HudTextPrimary,
+                    style = MaterialTheme.typography.labelSmall,
+                )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    val distanceEnabled = prefs.enableFrontCamera || prefs.enableProximitySensor
                     HudMetricTile(
                         icon = Icons.Rounded.Straighten,
-                        label = "Jarak",
-                        value = if (distanceEnabled) {
-                            String.format(Locale.US, "%.0f cm", snapshot.distanceCm)
-                        } else {
-                            "Off"
-                        },
+                        label = "Est. jarak",
+                        value = if (snapshot.isProximityTriggered) "Objek dekat" else snapshot.distanceCm?.metric("cm", 0) ?: snapshot.distanceDataStatus.label,
                         status = snapshot.distanceStatus,
                         hazeState = hazeState,
                         modifier = Modifier.weight(1f),
@@ -323,11 +336,7 @@ fun ActiveSessionScreen(
                     HudMetricTile(
                         icon = Icons.Rounded.RemoveRedEye,
                         label = "Kedipan",
-                        value = if (prefs.enableFrontCamera) {
-                            String.format(Locale.US, "%.1f BPM", snapshot.blinkRateBpm)
-                        } else {
-                            "Off"
-                        },
+                        value = snapshot.blinkRateBpm?.metric("BPM") ?: snapshot.blinkDataStatus.label,
                         status = snapshot.blinkStatus,
                         hazeState = hazeState,
                         modifier = Modifier.weight(1f),
@@ -335,12 +344,8 @@ fun ActiveSessionScreen(
                     val motionEnabled = prefs.enableAccelerometer || prefs.enableGyroscope
                     HudMetricTile(
                         icon = Icons.Rounded.AccessibilityNew,
-                        label = "Leher",
-                        value = if (motionEnabled) {
-                            String.format(Locale.US, "%.0f deg", snapshot.neckAngleDeg)
-                        } else {
-                            "Off"
-                        },
+                        label = "Est. orientasi",
+                        value = snapshot.neckAngleDeg?.metric("deg", 0) ?: snapshot.postureDataStatus.label,
                         status = snapshot.postureStatus,
                         hazeState = hazeState,
                         modifier = Modifier.weight(1f),
@@ -354,23 +359,15 @@ fun ActiveSessionScreen(
                     HudMetricTile(
                         icon = Icons.Rounded.LightMode,
                         label = "Cahaya",
-                        value = if (prefs.enableLightSensor) {
-                            String.format(Locale.US, "%.0f lx · %d%%", snapshot.ambientLux, snapshot.screenBrightnessPct)
-                        } else {
-                            "Off"
-                        },
+                        value = snapshot.ambientLux?.metric("lx", 0) ?: snapshot.lightDataStatus.label,
                         status = snapshot.lightingStatus,
                         hazeState = hazeState,
                         modifier = Modifier.weight(1f),
                     )
                     HudMetricTile(
                         icon = Icons.Rounded.GraphicEq,
-                        label = "Kebisingan",
-                        value = if (prefs.enableMicrophone) {
-                            String.format(Locale.US, "%.0f dB", snapshot.noiseDb)
-                        } else {
-                            "Off"
-                        },
+                        label = "Amplitudo mic",
+                        value = snapshot.noiseDb?.metric("dBFS") ?: snapshot.noiseDataStatus.label,
                         status = snapshot.noiseStatus,
                         hazeState = hazeState,
                         modifier = Modifier.weight(1f),
@@ -430,12 +427,12 @@ private fun FloatingAlertPill(
     val colors = LumiTheme.colors
     val (accent, message) = when (alert) {
         is ActiveAlert.DistanceWarning -> {
-            val c = if (alert.isCriticalProximity) colors.critical else colors.warning
+            val c = if (alert.isCriticalProximity) DarkCritical else DarkWarning
             c to alert.message
         }
-        is ActiveAlert.PostureWarning -> colors.warning to alert.message
-        is ActiveAlert.GlareWarning -> colors.warning to alert.message
-        else -> colors.warning to ""
+        is ActiveAlert.PostureWarning -> DarkWarning to alert.message
+        is ActiveAlert.GlareWarning -> DarkWarning to alert.message
+        else -> DarkWarning to ""
     }
 
     GlassSurface(
@@ -475,9 +472,10 @@ private fun HudMetricTile(
 ) {
     val colors = LumiTheme.colors
     val dotColor = when (status) {
-        MetricStatus.OPTIMAL -> colors.optimal
-        MetricStatus.WARNING -> colors.warning
-        MetricStatus.CRITICAL -> colors.critical
+        MetricStatus.UNAVAILABLE -> HudTextSecondary
+        MetricStatus.OPTIMAL -> DarkOptimal
+        MetricStatus.WARNING -> DarkWarning
+        MetricStatus.CRITICAL -> DarkCritical
     }
 
     GlassSurface(
@@ -494,6 +492,7 @@ private fun HudMetricTile(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Row(
+                    modifier = Modifier.weight(1f),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -518,6 +517,7 @@ private fun HudMetricTile(
             }
             TabularMetricText(
                 text = value,
+                maxLines = 2,
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                 color = HudTextPrimary,
             )

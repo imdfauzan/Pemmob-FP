@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lumiposture.app.domain.model.MetricStatus
+import com.lumiposture.app.presentation.components.metric
 import com.lumiposture.app.presentation.components.LumiCard
 import com.lumiposture.app.presentation.components.StatusPillTag
 import com.lumiposture.app.presentation.components.TabularMetricText
@@ -109,7 +110,7 @@ fun HistoryScreen(
                             color = colors.textSecondary,
                         )
                         TabularMetricText(
-                            text = if (uiState.sessions.isEmpty()) "-" else "${uiState.averageScoreAllTime}",
+                            text = uiState.averageScoreAllTime?.toString() ?: "N/A",
                             style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.SemiBold),
                             color = colors.primary,
                         )
@@ -157,7 +158,7 @@ fun HistoryScreen(
                                 color = colors.textPrimary,
                             )
                             TabularMetricText(
-                                text = "$durationMin mnt · ${String.format(Locale.US, "%.1f", session.avgBlinkRate)} BPM · ${String.format(Locale.US, "%.0f", session.avgDistanceCm)} cm · ${String.format(Locale.US, "%.0f", session.avgNeckAngleDeg)} deg",
+                                text = "$durationMin mnt · ${session.avgBlinkRate.metric("BPM")} · ${session.avgDistanceCm.metric("cm", 0)}",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = colors.textSecondary,
                             )
@@ -172,9 +173,10 @@ fun HistoryScreen(
                             verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
                             TabularMetricText(
-                                text = session.overallScore.toString(),
+                                text = session.overallScore?.toString() ?: "N/A",
                                 style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.SemiBold),
                                 color = when (status) {
+                                    MetricStatus.UNAVAILABLE -> colors.textSecondary
                                     MetricStatus.OPTIMAL -> colors.optimal
                                     MetricStatus.WARNING -> colors.warning
                                     MetricStatus.CRITICAL -> colors.critical

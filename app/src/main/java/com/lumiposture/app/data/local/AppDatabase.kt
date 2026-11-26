@@ -13,7 +13,7 @@ import com.lumiposture.app.data.local.entity.TelemetrySampleEntity
         TelemetrySampleEntity::class,
         AiInsightEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {

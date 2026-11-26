@@ -27,16 +27,20 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lumiposture.app.presentation.components.TabularMetricText
 import com.lumiposture.app.presentation.theme.LumiTheme
+import com.lumiposture.app.presentation.theme.DarkOptimal
+import com.lumiposture.app.presentation.theme.DarkWarning
+import com.lumiposture.app.presentation.theme.DarkCritical
 
 @Composable
 fun LiveErgonomicGauge(
-    score: Int,
+    score: Int?,
     modifier: Modifier = Modifier,
     size: Dp = 152.dp,
     onDarkSurface: Boolean = false,
+    isPartial: Boolean = false,
 ) {
     val colors = LumiTheme.colors
-    val targetProgress = (score.coerceIn(0, 100) / 100f)
+    val targetProgress = ((score ?: 0).coerceIn(0, 100) / 100f)
     val animatedProgress by animateFloatAsState(
         targetValue = targetProgress,
         animationSpec = tween(durationMillis = 350),
@@ -44,9 +48,10 @@ fun LiveErgonomicGauge(
     )
 
     val targetAccent = when {
-        score >= 80 -> colors.optimal
-        score >= 60 -> colors.warning
-        else -> colors.critical
+        score == null -> colors.textSecondary
+        score >= 80 -> if (onDarkSurface) DarkOptimal else colors.optimal
+        score >= 60 -> if (onDarkSurface) DarkWarning else colors.warning
+        else -> if (onDarkSurface) DarkCritical else colors.critical
     }
     val animatedAccent by animateColorAsState(
         targetValue = targetAccent,
@@ -62,10 +67,12 @@ fun LiveErgonomicGauge(
     val subTextColor = if (onDarkSurface) Color.White.copy(alpha = 0.72f) else colors.textSecondary
 
     val statusText = when {
-        score >= 85 -> "Optimal"
-        score >= 70 -> "Stabil"
-        score >= 50 -> "Waspada"
-        else -> "Berisiko"
+        score == null -> "Belum ada data"
+        isPartial -> "Data parsial"
+        score >= 85 -> "Indeks tinggi"
+        score >= 70 -> "Indeks sedang"
+        score >= 50 -> "Perlu perhatian"
+        else -> "Indeks rendah"
     }
 
     val isCompact = size <= 124.dp
@@ -113,7 +120,7 @@ fun LiveErgonomicGauge(
                 verticalArrangement = Arrangement.Center,
             ) {
                 TabularMetricText(
-                    text = score.toString(),
+                    text = score?.toString() ?: "N/A",
                     style = MaterialTheme.typography.displayMedium.copy(
                         fontSize = scoreFontSize,
                         lineHeight = scoreFontSize,

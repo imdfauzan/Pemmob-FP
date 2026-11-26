@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 import javax.inject.Inject
 
 data class ReportUiState(
@@ -40,7 +41,7 @@ class ReportViewModel @Inject constructor(
     ) { report, reanalyzing, errorMsg ->
         ReportUiState(
             report = report,
-            isLoading = report == null,
+            isLoading = false,
             isReanalyzing = reanalyzing,
             analysisErrorMessage = errorMsg,
         )
@@ -57,12 +58,13 @@ class ReportViewModel @Inject constructor(
         viewModelScope.launch {
             isReanalyzingFlow.value = true
             errorMessageFlow.value = null
+            try {
             val aggregate = analyzeSessionUseCase.buildAggregateInput(
                 durationSeconds = current.session.durationSeconds,
                 studyMode = current.session.studyMode,
                 overallScore = current.session.overallScore,
                 samples = current.samples,
-                avgBrightnessPct = 60,
+                avgBrightnessPct = current.samples.mapNotNull { it.screenBrightnessPct }.takeIf { it.isNotEmpty() }?.average()?.toInt(),
             )
             val outcome = analyzeSessionUseCase.analyzeWithOutcome(aggregate, current.samples)
             sessionRepository.updateSessionInsight(current.session.id, outcome.insight)
@@ -71,7 +73,13 @@ class ReportViewModel @Inject constructor(
             } else {
                 outcome.fallbackReason
             }
-            isReanalyzingFlow.value = false
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                errorMessageFlow.value = "Analisis belum tersimpan. Coba lagi."
+            } finally {
+                isReanalyzingFlow.value = false
+            }
         }
     }
 }

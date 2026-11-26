@@ -14,6 +14,8 @@ import androidx.compose.ui.unit.dp
 import com.lumiposture.app.domain.model.SensorSnapshot
 import com.lumiposture.app.presentation.components.GlassSurface
 import com.lumiposture.app.presentation.components.TabularMetricText
+import com.lumiposture.app.presentation.components.metric
+import com.lumiposture.app.domain.model.DataStatus
 import com.lumiposture.app.presentation.theme.HudTextPrimary
 import com.lumiposture.app.presentation.theme.HudTextSecondary
 import dev.chrisbanes.haze.HazeState
@@ -38,13 +40,14 @@ fun DebugTelemetryOverlay(
                 style = MaterialTheme.typography.labelSmall,
                 color = HudTextSecondary,
             )
-            DebugRow("Lux / Layar", String.format(Locale.US, "%.0f lx | %d%%", snapshot.ambientLux, snapshot.screenBrightnessPct))
-            DebugRow("Kebisingan", String.format(Locale.US, "%.1f dB", snapshot.noiseDb))
-            DebugRow("IPD / Jarak", String.format(Locale.US, "%.1f px | %.1f cm", snapshot.ipdPixels, snapshot.distanceCm))
-            DebugRow("Pitch HP / Kepala", String.format(Locale.US, "%.1f deg | %.1f deg", snapshot.devicePitchDeg, snapshot.headPitchDeg))
-            DebugRow("Sudut Leher", String.format(Locale.US, "%.1f deg", snapshot.neckAngleDeg))
+            DebugRow("Lux / Layar", "${snapshot.ambientLux.metric("lx", 0)} | ${snapshot.screenBrightnessPct}%")
+            DebugRow("Amplitudo mic", snapshot.noiseDb?.metric("dBFS") ?: snapshot.noiseDataStatus.label)
+            DebugRow("Est. jarak", snapshot.distanceCm?.metric("cm") ?: snapshot.distanceDataStatus.label)
+            DebugRow("Pitch HP / Kepala", "${snapshot.devicePitchDeg.metric("deg")} | ${snapshot.headPitchDeg.metric("deg")}")
+            DebugRow("Est. orientasi", snapshot.neckAngleDeg?.metric("deg") ?: snapshot.postureDataStatus.label)
+            DebugRow("Kamera / Kedipan", "${snapshot.cameraDataStatus.label} | ${snapshot.blinkDataStatus.label}")
             DebugRow("Vision FPS / Kedipan", String.format(Locale.US, "%.1f fps | %d", snapshot.inferenceFps, snapshot.totalBlinks))
-            DebugRow("Proximity", if (snapshot.isProximityTriggered) "DEKAT (<10 cm)" else "AMAN")
+            DebugRow("Proximity", if (snapshot.proximityDataStatus != DataStatus.AVAILABLE) snapshot.proximityDataStatus.label else if (snapshot.isProximityTriggered) "DEKAT" else "JAUH")
         }
     }
 }
@@ -57,11 +60,14 @@ private fun DebugRow(label: String, value: String) {
     ) {
         Text(
             text = label,
+            modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.labelSmall,
             color = HudTextSecondary,
         )
         TabularMetricText(
             text = value,
+            modifier = Modifier.weight(1.2f),
+            maxLines = 2,
             style = MaterialTheme.typography.labelSmall,
             color = HudTextPrimary,
         )

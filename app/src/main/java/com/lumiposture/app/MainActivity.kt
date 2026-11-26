@@ -31,7 +31,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             LumiPostureTheme {
                 val isCalibratedFlow = remember(userDataStore.preferencesFlow) {
-                    userDataStore.preferencesFlow.map { it.isCalibrated }
+                    userDataStore.preferencesFlow.map { it.isCalibrated || it.onboardingCompleted }
                 }
                 val isCalibratedState by isCalibratedFlow.collectAsStateWithLifecycle(initialValue = null)
 

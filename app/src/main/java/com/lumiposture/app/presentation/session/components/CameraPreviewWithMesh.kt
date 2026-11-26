@@ -26,6 +26,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.lumiposture.app.data.sensor.FaceLandmarkerHelper
 import com.lumiposture.app.domain.model.NormalizedPoint
+import com.lumiposture.app.domain.model.DataStatus
 import com.lumiposture.app.presentation.theme.DarkPrimary
 import java.util.concurrent.Executors
 import kotlin.math.max
@@ -63,9 +64,14 @@ fun CameraPreviewWithMesh(
 
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
         val mainExecutor = ContextCompat.getMainExecutor(context)
+        var disposed = false
+        var ownedPreview: Preview? = null
+        var ownedAnalysis: ImageAnalysis? = null
 
         cameraProviderFuture.addListener({
+            if (disposed) return@addListener
             runCatching {
+                faceLandmarkerHelper.initialize()
                 val cameraProvider = cameraProviderFuture.get()
                 val preview = Preview.Builder().build().apply {
                     surfaceProvider = previewView.surfaceProvider
@@ -91,19 +97,22 @@ fun CameraPreviewWithMesh(
                         }
                     }
 
-                cameraProvider.unbindAll()
+                ownedPreview = preview
+                ownedAnalysis = imageAnalysis
                 cameraProvider.bindToLifecycle(
                     lifecycleOwner,
                     CameraSelector.DEFAULT_FRONT_CAMERA,
                     preview,
                     imageAnalysis,
                 )
-            }
+            }.onFailure { faceLandmarkerHelper.reportStatus(if (it is SecurityException) DataStatus.PERMISSION_DENIED else DataStatus.FAILED) }
         }, mainExecutor)
 
         onDispose {
+            disposed = true
+            ownedAnalysis?.clearAnalyzer()
             runCatching {
-                ProcessCameraProvider.getInstance(context).get().unbindAll()
+                if (cameraProviderFuture.isDone) cameraProviderFuture.get().unbind(*listOfNotNull(ownedPreview, ownedAnalysis).toTypedArray())
             }
         }
     }

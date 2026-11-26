@@ -60,7 +60,7 @@ fun LumiNavGraph(
         ) == PackageManager.PERMISSION_GRANTED
     }
 
-    val startDestination = if (isCalibrated && hasCameraPermission) {
+    val startDestination = if (isCalibrated) {
         LumiRoutes.HOME
     } else {
         LumiRoutes.CALIBRATION
@@ -113,11 +113,7 @@ fun LumiNavGraph(
                             context,
                             Manifest.permission.CAMERA,
                         ) == PackageManager.PERMISSION_GRANTED
-                        if (canRunCamera) {
-                            navController.navigate(LumiRoutes.session(mode))
-                        } else {
-                            navController.navigate(LumiRoutes.calibration(fromSettings = true))
-                        }
+                        navController.navigate(LumiRoutes.session(mode))
                     },
                     onOpenReport = { sessionId ->
                         navController.navigate(LumiRoutes.report(sessionId))

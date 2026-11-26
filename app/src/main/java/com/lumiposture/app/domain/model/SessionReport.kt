@@ -3,6 +3,7 @@ package com.lumiposture.app.domain.model
 data class UserPreferences(
     val baselineIpdPx: Float = 0f,
     val isCalibrated: Boolean = false,
+    val onboardingCompleted: Boolean = false,
     val minDistanceThresholdCm: Int = 25,
     val maxNeckAngleThresholdDeg: Int = 30,
     val minLuxThreshold: Int = 80,
@@ -19,13 +20,14 @@ data class UserPreferences(
 
 data class TelemetrySamplePoint(
     val elapsedSeconds: Int,
-    val ergonomicScore: Int,
-    val blinkRateBpm: Float,
-    val distanceCm: Float,
-    val neckAngleDeg: Float,
-    val ambientLux: Float,
-    val noiseDb: Float,
+    val ergonomicScore: Int?,
+    val blinkRateBpm: Float?,
+    val distanceCm: Float?,
+    val neckAngleDeg: Float?,
+    val ambientLux: Float?,
+    val noiseDb: Float?,
     val isViolationActive: Boolean,
+    val screenBrightnessPct: Int? = null,
 )
 
 data class AiInsight(
@@ -44,12 +46,12 @@ data class StudySessionSummary(
     val endTimeMillis: Long,
     val durationSeconds: Int,
     val studyMode: StudyMode,
-    val overallScore: Int,
-    val avgBlinkRate: Float,
-    val avgDistanceCm: Float,
-    val avgNeckAngleDeg: Float,
-    val avgLux: Float,
-    val avgNoiseDb: Float,
+    val overallScore: Int?,
+    val avgBlinkRate: Float?,
+    val avgDistanceCm: Float?,
+    val avgNeckAngleDeg: Float?,
+    val avgLux: Float?,
+    val avgNoiseDb: Float?,
     val totalWarningsTriggered: Int,
     val statusLabel: String? = null,
     val isGeneratedByCloudAi: Boolean? = null,

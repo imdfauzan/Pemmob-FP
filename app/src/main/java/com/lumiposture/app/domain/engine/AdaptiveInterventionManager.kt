@@ -56,11 +56,26 @@ class AdaptiveInterventionManager @Inject constructor() {
 
     fun getTotalWarningsTriggered(): Int = totalWarningsTriggered
 
+    fun clearContinuousViolations() {
+        distanceViolationStartMs = null
+        postureViolationStartMs = null
+        glareViolationStartMs = null
+        lowBlinkViolationStartMs = null
+        highSquintBlinkViolationStartMs = null
+    }
+
     fun evaluate(
         snapshot: SensorSnapshot,
         prefs: UserPreferences,
     ): ActiveAlert {
         val nowMs = snapshot.timestampMs
+        if (snapshot.distanceCm == null) distanceViolationStartMs = null
+        if (snapshot.neckAngleDeg == null) postureViolationStartMs = null
+        if (snapshot.ambientLux == null) glareViolationStartMs = null
+        if (snapshot.blinkRateBpm == null) {
+            lowBlinkViolationStartMs = null
+            highSquintBlinkViolationStartMs = null
+        }
         if (sessionStartMs == null) {
             sessionStartMs = nowMs
             lastEyeBreakTriggeredMs = nowMs
@@ -75,7 +90,7 @@ class AdaptiveInterventionManager @Inject constructor() {
         }
 
         // 1. Proximity / Critical Distance (> 5s for camera distance, immediate for proximity)
-        val isTooClose = snapshot.faceDetected && snapshot.distanceCm < prefs.minDistanceThresholdCm
+        val isTooClose = snapshot.distanceCm?.let { it < prefs.minDistanceThresholdCm } == true
         distanceViolationStartMs = if (isTooClose) {
             distanceViolationStartMs ?: nowMs
         } else {
@@ -97,7 +112,7 @@ class AdaptiveInterventionManager @Inject constructor() {
             val alert = ActiveAlert.DistanceWarning(
                 distanceCm = snapshot.distanceCm,
                 isCriticalProximity = false,
-                message = "Jarak pandang ${snapshot.distanceCm.roundToInt()} cm terlalu dekat. Jauhkan layar dari mata.",
+                message = "Estimasi jarak ${snapshot.distanceCm?.roundToInt()} cm. Jauhkan layar dari mata.",
             )
             recordTransition("DISTANCE")
             return alert
@@ -106,8 +121,7 @@ class AdaptiveInterventionManager @Inject constructor() {
         // 2. Tech-Neck Posture (> 15s)
         val motionEnabled = prefs.enableAccelerometer || prefs.enableGyroscope
         val isPostureViolation = motionEnabled && (
-            snapshot.neckAngleDeg >= prefs.maxNeckAngleThresholdDeg ||
-                (snapshot.studyMode == StudyMode.HANDHELD && snapshot.isLyingDown)
+            snapshot.neckAngleDeg?.let { it >= prefs.maxNeckAngleThresholdDeg } == true
             )
         postureViolationStartMs = if (isPostureViolation) {
             postureViolationStartMs ?: nowMs
@@ -118,12 +132,12 @@ class AdaptiveInterventionManager @Inject constructor() {
 
         if (postureElapsedMs >= POSTURE_PERSIST_MS) {
             val message = if (snapshot.isLyingDown && snapshot.studyMode == StudyMode.HANDHELD) {
-                "Terdeteksi posisi membaca sambil tiduran. Tegakkan postur tubuh dan leher."
+                "Kemiringan HP melewati ambang. Sesuaikan posisi layar."
             } else {
-                "Sudut menunduk ${snapshot.neckAngleDeg.roundToInt()} derajat terdeteksi. Tegakkan posisi leher."
+                "Estimasi orientasi ${snapshot.neckAngleDeg?.roundToInt()} derajat. Sesuaikan posisi layar."
             }
             val alert = ActiveAlert.PostureWarning(
-                neckAngleDeg = snapshot.neckAngleDeg,
+                neckAngleDeg = requireNotNull(snapshot.neckAngleDeg),
                 isLyingDown = snapshot.isLyingDown,
                 message = message,
             )
@@ -136,7 +150,7 @@ class AdaptiveInterventionManager @Inject constructor() {
         val sinceLastBreakMs = nowMs - (lastEyeBreakTriggeredMs ?: nowMs)
         val scheduledBreakIntervalMs = DEFAULT_EYE_BREAK_MINUTES * 60_000L
 
-        val lowBlinkActive = snapshot.faceDetected && sessionElapsedMs >= 30_000L && snapshot.blinkRateBpm < 10f
+        val lowBlinkActive = snapshot.faceDetected && sessionElapsedMs >= 60_000L && snapshot.blinkRateBpm?.let { it < 10f } == true
         lowBlinkViolationStartMs = if (lowBlinkActive) {
             lowBlinkViolationStartMs ?: nowMs
         } else {
@@ -156,7 +170,7 @@ class AdaptiveInterventionManager @Inject constructor() {
             sinceLastBreakMs >= scheduledBreakIntervalMs ->
                 "Sudah $DEFAULT_EYE_BREAK_MINUTES menit menatap layar. Saatnya jeda 20-20-20."
             squintElapsed >= ADAPTIVE_SQUINT_BREAK_MS ->
-                "Frekuensi kedipan rendah (${snapshot.blinkRateBpm.roundToInt()} BPM) disertai mata menyipit."
+                "Estimasi kedipan rendah (${snapshot.blinkRateBpm?.roundToInt()} BPM) disertai mata menyipit. Ini bukan diagnosis."
             lowBlinkElapsed >= LOW_BLINK_BREAK_MS ->
                 "Frekuensi kedipan di bawah 10 BPM selama 2 menit berturut-turut."
             else -> null
@@ -175,8 +189,8 @@ class AdaptiveInterventionManager @Inject constructor() {
 
         // 4. Dim-Room Glare Warning (> 8s)
         val glareActive = prefs.enableLightSensor &&
-            snapshot.ambientLux < prefs.minLuxThreshold &&
-            snapshot.screenBrightnessPct > 65
+            snapshot.ambientLux?.let { it < prefs.minLuxThreshold } == true &&
+            snapshot.screenBrightnessPct?.let { it > 65 } == true
         glareViolationStartMs = if (glareActive) {
             glareViolationStartMs ?: nowMs
         } else {
@@ -185,9 +199,9 @@ class AdaptiveInterventionManager @Inject constructor() {
         val glareElapsedMs = glareViolationStartMs?.let { nowMs - it } ?: 0L
         if (glareElapsedMs >= GLARE_PERSIST_MS) {
             val alert = ActiveAlert.GlareWarning(
-                ambientLux = snapshot.ambientLux,
-                brightnessPct = snapshot.screenBrightnessPct,
-                message = "Ruangan redup (${snapshot.ambientLux.roundToInt()} Lux) dengan layar terang (${snapshot.screenBrightnessPct}%). Nyalakan lampu atau redupkan layar.",
+                ambientLux = requireNotNull(snapshot.ambientLux),
+                brightnessPct = requireNotNull(snapshot.screenBrightnessPct),
+                message = "Ruangan redup (${snapshot.ambientLux?.roundToInt()} Lux) dengan layar terang (${snapshot.screenBrightnessPct}%). Nyalakan lampu atau redupkan layar.",
             )
             recordTransition("GLARE")
             return alert

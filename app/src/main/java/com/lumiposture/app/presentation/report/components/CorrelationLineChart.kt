@@ -51,12 +51,23 @@ fun CorrelationLineChart(
     var selectedMode by remember { mutableStateOf(ChartMetricMode.BLINK_AND_LUX) }
     val modelProducer = remember { CartesianChartModelProducer() }
 
-    val safeSamples = remember(samples) {
-        when {
-            samples.size >= 2 -> samples
-            samples.size == 1 -> listOf(samples.first(), samples.first())
-            else -> emptyList()
+    val safeSamples = remember(samples, selectedMode) {
+        val runs = mutableListOf<MutableList<TelemetrySamplePoint>>()
+        var current = mutableListOf<TelemetrySamplePoint>()
+        for (point in samples) {
+            val valid = when (selectedMode) {
+                ChartMetricMode.SCORE -> point.ergonomicScore != null
+                ChartMetricMode.BLINK_AND_LUX -> point.blinkRateBpm != null && point.ambientLux != null
+                ChartMetricMode.NECK_AND_NOISE -> point.neckAngleDeg != null && point.noiseDb != null
+            }
+            if (!valid || (current.isNotEmpty() && point.elapsedSeconds - current.last().elapsedSeconds > 10)) {
+                if (current.isNotEmpty()) runs += current
+                current = mutableListOf()
+            }
+            if (valid) current += point
         }
+        if (current.isNotEmpty()) runs += current
+        runs.maxByOrNull { it.size }?.takeIf { it.size >= 2 }.orEmpty()
     }
 
     LaunchedEffect(safeSamples, selectedMode) {
@@ -65,15 +76,15 @@ fun CorrelationLineChart(
             lineModel {
                 when (selectedMode) {
                     ChartMetricMode.SCORE -> {
-                        series(safeSamples.map { it.ergonomicScore.toFloat() })
+                        series(x = safeSamples.map { it.elapsedSeconds }, y = safeSamples.map { requireNotNull(it.ergonomicScore) })
                     }
                     ChartMetricMode.BLINK_AND_LUX -> {
-                        series(safeSamples.map { it.blinkRateBpm })
-                        series(safeSamples.map { (it.ambientLux / 10f).coerceIn(0f, 60f) })
+                        series(x = safeSamples.map { it.elapsedSeconds }, y = safeSamples.map { requireNotNull(it.blinkRateBpm) })
+                        series(x = safeSamples.map { it.elapsedSeconds }, y = safeSamples.map { requireNotNull(it.ambientLux) / 10f })
                     }
                     ChartMetricMode.NECK_AND_NOISE -> {
-                        series(safeSamples.map { it.neckAngleDeg })
-                        series(safeSamples.map { it.noiseDb })
+                        series(x = safeSamples.map { it.elapsedSeconds }, y = safeSamples.map { requireNotNull(it.neckAngleDeg) })
+                        series(x = safeSamples.map { it.elapsedSeconds }, y = safeSamples.map { requireNotNull(it.noiseDb) })
                     }
                 }
             }
@@ -90,6 +101,8 @@ fun CorrelationLineChart(
         )
 
         Spacer(modifier = Modifier.height(14.dp))
+        Text("Segmen data lengkap terpanjang; waktu dalam detik. Perubahan bersama bukan bukti sebab-akibat.",
+            style = MaterialTheme.typography.labelSmall, color = colors.textSecondary)
 
         if (safeSamples.isEmpty()) {
             Text(
@@ -156,8 +169,8 @@ fun CorrelationLineChart(
                     ChartLegendItem("Cahaya (x10 Lux)", colors.primary)
                 }
                 ChartMetricMode.NECK_AND_NOISE -> {
-                    ChartLegendItem("Sudut Leher (deg)", colors.warning)
-                    ChartLegendItem("Kebisingan (dB)", colors.critical)
+                    ChartLegendItem("Est. orientasi (deg)", colors.warning)
+                    ChartLegendItem("Mic (dBFS)", colors.critical)
                 }
             }
         }

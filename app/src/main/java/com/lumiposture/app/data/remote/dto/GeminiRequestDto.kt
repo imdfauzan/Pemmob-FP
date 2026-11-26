@@ -44,7 +44,7 @@ data class GeminiTelemetryPayloadDto(
     @SerialName("study_mode")
     val studyMode: String,
     @SerialName("overall_ergonomic_score")
-    val overallErgonomicScore: Int,
+    val overallErgonomicScore: Int?,
     @SerialName("metrics_summary")
     val metricsSummary: GeminiMetricsSummaryDto,
     @SerialName("timeline_segments")
@@ -54,34 +54,34 @@ data class GeminiTelemetryPayloadDto(
 @Serializable
 data class GeminiMetricsSummaryDto(
     @SerialName("avg_blink_rate_bpm")
-    val avgBlinkRateBpm: Float,
+    val avgBlinkRateBpm: Float?,
     @SerialName("min_blink_rate_bpm")
-    val minBlinkRateBpm: Float,
+    val minBlinkRateBpm: Float?,
     @SerialName("avg_distance_cm")
-    val avgDistanceCm: Float,
+    val avgDistanceCm: Float?,
     @SerialName("too_close_duration_sec")
     val tooCloseDurationSec: Int,
-    @SerialName("avg_neck_angle_deg")
-    val avgNeckAngleDeg: Float,
-    @SerialName("tech_neck_duration_sec")
+    @SerialName("avg_orientation_estimate_deg")
+    val avgNeckAngleDeg: Float?,
+    @SerialName("orientation_above_threshold_duration_sec")
     val techNeckDurationSec: Int,
     @SerialName("avg_ambient_lux")
-    val avgAmbientLux: Float,
+    val avgAmbientLux: Float?,
     @SerialName("avg_screen_brightness_pct")
-    val avgScreenBrightnessPct: Int,
-    @SerialName("avg_noise_db")
-    val avgNoiseDb: Float,
-    @SerialName("peak_noise_db")
-    val peakNoiseDb: Float,
+    val avgScreenBrightnessPct: Int?,
+    @SerialName("avg_microphone_dbfs")
+    val avgNoiseDb: Float?,
+    @SerialName("peak_microphone_dbfs")
+    val peakNoiseDb: Float?,
 )
 
 @Serializable
 data class GeminiTimelineSegmentDto(
     @SerialName("minute_range")
     val minuteRange: String,
-    val score: Int,
-    val lux: Float,
-    val bpm: Float,
-    @SerialName("neck_deg")
-    val neckDeg: Float,
+    val score: Int?,
+    val lux: Float?,
+    val bpm: Float?,
+    @SerialName("orientation_estimate_deg")
+    val neckDeg: Float?,
 )

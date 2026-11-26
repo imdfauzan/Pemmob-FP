@@ -3,6 +3,7 @@ package com.lumiposture.app.di
 import android.content.Context
 import androidx.room.Room
 import com.lumiposture.app.data.local.AppDatabase
+import com.lumiposture.app.data.local.MIGRATION_1_2
 import com.lumiposture.app.data.local.dao.SessionDao
 import com.lumiposture.app.data.repository.SessionRepository
 import com.lumiposture.app.data.repository.SessionRepositoryImpl
@@ -25,7 +26,7 @@ object DatabaseModule {
             context,
             AppDatabase::class.java,
             "lumiposture.db",
-        ).build()
+        ).addMigrations(MIGRATION_1_2).build()
     }
 
     @Provides

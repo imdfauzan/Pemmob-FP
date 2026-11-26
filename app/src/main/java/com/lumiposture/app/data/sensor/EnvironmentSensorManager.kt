@@ -12,6 +12,7 @@ import android.hardware.camera2.CameraManager
 import android.os.SystemClock
 import android.provider.Settings
 import com.lumiposture.app.domain.model.EnvironmentTelemetry
+import com.lumiposture.app.domain.model.DataStatus
 import com.lumiposture.app.domain.model.SensorCapabilities
 import com.lumiposture.app.domain.model.UserPreferences
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -98,10 +99,17 @@ class EnvironmentSensorManager @Inject constructor(
     )
 
     private fun observeWithConfig(cfg: SensorToggleConfig): Flow<EnvironmentTelemetry> = callbackFlow {
-        var ambientLux = 200f
+        var ambientLux = 0f
         var isProximityNear = false
         var proximityCm = 100f
-        var devicePitchDeg = 12f
+        var devicePitchDeg = 0f
+        var lightTimestamp = 0L
+        var proximityTimestamp = 0L
+        var motionTimestamp = 0L
+        var lightStatus = initialStatus(cfg.enableLight, lightSensor)
+        var proximityStatus = initialStatus(cfg.enableProximity, proximitySensor)
+        var motionStatus = initialStatus(cfg.enableGyroscope || cfg.enableAccelerometer,
+            if (cfg.enableGyroscope && rotationVectorSensor != null) rotationVectorSensor else accelerometer.takeIf { cfg.enableAccelerometer })
         var isLyingDown = false
         var lastBrightnessCheckMs = 0L
         var cachedBrightnessPct = readScreenBrightnessPct()
@@ -122,6 +130,14 @@ class EnvironmentSensorManager @Inject constructor(
             trySend(
                 EnvironmentTelemetry(
                     ambientLux = ambientLux,
+                    lightStatus = lightStatus,
+                    proximityStatus = proximityStatus,
+                    motionStatus = motionStatus,
+                    lightTimestampMs = lightTimestamp,
+                    proximityTimestampMs = proximityTimestamp,
+                    motionTimestampMs = motionTimestamp,
+                    lightReportsOnChange = lightSensor?.reportingMode == Sensor.REPORTING_MODE_ON_CHANGE,
+                    proximityReportsOnChange = proximitySensor?.reportingMode == Sensor.REPORTING_MODE_ON_CHANGE,
                     hasLightSensor = lightSensor != null,
                     isProximityNear = isProximityNear,
                     proximityCm = proximityCm,
@@ -140,6 +156,8 @@ class EnvironmentSensorManager @Inject constructor(
                     Sensor.TYPE_LIGHT -> {
                         if (cfg.enableLight) {
                             ambientLux = event.values[0].coerceAtLeast(0f)
+                            lightTimestamp = System.currentTimeMillis()
+                            lightStatus = if (ambientLux.isFinite()) DataStatus.AVAILABLE else DataStatus.FAILED
                         }
                     }
 
@@ -149,11 +167,15 @@ class EnvironmentSensorManager @Inject constructor(
                             val maxRange = proximitySensor?.maximumRange ?: 5f
                             proximityCm = value
                             isProximityNear = (value < maxRange) && (value < 10f)
+                            proximityTimestamp = System.currentTimeMillis()
+                            proximityStatus = if (value.isFinite()) DataStatus.AVAILABLE else DataStatus.FAILED
                         }
                     }
 
                     Sensor.TYPE_ROTATION_VECTOR -> {
                         if (usingRotationVector) {
+                            motionTimestamp = System.currentTimeMillis()
+                            motionStatus = DataStatus.AVAILABLE
                             SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
                             val gx = rotationMatrix[6]
                             val gy = rotationMatrix[7]
@@ -171,6 +193,8 @@ class EnvironmentSensorManager @Inject constructor(
 
                     Sensor.TYPE_ACCELEROMETER -> {
                         if (!usingRotationVector && cfg.enableAccelerometer) {
+                            motionTimestamp = System.currentTimeMillis()
+                            motionStatus = DataStatus.AVAILABLE
                             val alpha = 0.2f
                             if (!accelInitialized) {
                                 filteredAx = event.values[0]
@@ -199,16 +223,15 @@ class EnvironmentSensorManager @Inject constructor(
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
         }
 
-        if (cfg.enableLight) {
-            lightSensor?.let { sensorManager.registerListener(listener, it, SensorManager.SENSOR_DELAY_UI) }
-        }
-        if (cfg.enableProximity) {
-            proximitySensor?.let { sensorManager.registerListener(listener, it, SensorManager.SENSOR_DELAY_UI) }
-        }
+        fun register(sensor: Sensor?): Boolean = sensor != null && runCatching {
+            sensorManager.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_UI)
+        }.getOrDefault(false)
+        if (cfg.enableLight && lightSensor != null && !register(lightSensor)) lightStatus = DataStatus.FAILED
+        if (cfg.enableProximity && proximitySensor != null && !register(proximitySensor)) proximityStatus = DataStatus.FAILED
         if (usingRotationVector) {
-            sensorManager.registerListener(listener, rotationVectorSensor, SensorManager.SENSOR_DELAY_UI)
+            if (!register(rotationVectorSensor)) motionStatus = DataStatus.FAILED
         } else if (cfg.enableAccelerometer) {
-            accelerometer?.let { sensorManager.registerListener(listener, it, SensorManager.SENSOR_DELAY_UI) }
+            if (accelerometer != null && !register(accelerometer)) motionStatus = DataStatus.FAILED
         }
 
         emitCurrent()
@@ -218,13 +241,18 @@ class EnvironmentSensorManager @Inject constructor(
         }
     }.conflate()
 
+    private fun initialStatus(enabled: Boolean, sensor: Sensor?): DataStatus = when {
+        !enabled -> DataStatus.DISABLED
+        sensor == null -> DataStatus.UNSUPPORTED
+        else -> DataStatus.WAITING
+    }
+
     @Suppress("DiscouragedApi")
-    private fun readScreenBrightnessPct(): Int {
+    private fun readScreenBrightnessPct(): Int? {
         return runCatching {
             val raw = Settings.System.getInt(
                 context.contentResolver,
                 Settings.System.SCREEN_BRIGHTNESS,
-                128,
             )
             val maxId = Resources.getSystem().getIdentifier(
                 "config_screenBrightnessSettingMaximum",
@@ -237,6 +265,6 @@ class EnvironmentSensorManager @Inject constructor(
                 255
             }
             ((raw.toFloat() / maxVal.toFloat()) * 100f).roundToInt().coerceIn(0, 100)
-        }.getOrDefault(50)
+        }.getOrNull()
     }
 }

@@ -16,8 +16,8 @@ val LightTextTertiary = Color(0xFF64748B)
 val LightSurfaceVariant = Color(0xFFE8ECF2)
 
 val LightPrimary = Color(0xFF1D63ED)
-val LightOptimal = Color(0xFF16A34A)
-val LightWarning = Color(0xFFD97706)
+val LightOptimal = Color(0xFF166534)
+val LightWarning = Color(0xFF92400E)
 val LightCritical = Color(0xFFDC2626)
 
 // Dark Mode Palette (Obsidian Slate Canvas + Luminous Clinical Blue)
@@ -28,7 +28,7 @@ val DarkGlassBorder = Color(0x1FFFFFFF) // 12% white hairline
 val DarkOutlineSubtle = Color(0x14FFFFFF)
 val DarkTextPrimary = Color(0xFFF1F5F9)
 val DarkTextSecondary = Color(0xFF94A3B8)
-val DarkTextTertiary = Color(0xFF64748B)
+val DarkTextTertiary = Color(0xFF94A3B8)
 val DarkSurfaceVariant = Color(0xFF1E2330)
 
 val DarkPrimary = Color(0xFF4B8BFF)
@@ -37,7 +37,7 @@ val DarkWarning = Color(0xFFFBBF24)
 val DarkCritical = Color(0xFFF87171)
 
 // Camera HUD overlay constants (over dark live camera feed)
-val HudGlassTint = Color(0xA612151C)
+val HudGlassTint = Color(0xD912151C)
 val HudGlassBorder = Color(0x2EFFFFFF)
 val HudTextPrimary = Color(0xFFF8FAFC)
 val HudTextSecondary = Color(0xFFCBD5E1)

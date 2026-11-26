@@ -1,5 +1,68 @@
 # LumiPosture
 
+## Catatan stabilisasi Windows (26 November 2026)
+
+Bagian ini menjelaskan perilaku implementasi terkini dan menggantikan klaim metrik serta petunjuk setup lama di bawahnya. Dokumen PRD dan spesifikasi awal tetap disimpan sebagai konteks rancangan, bukan bukti validasi medis.
+
+### Membuka dan menjalankan
+
+1. Buka folder `C:\Users\Abyan\Documents\AndroidProjects\Pemmob-FP` melalui **Android Studio > Open**. WSL mengakses working tree yang sama di `/mnt/c/Users/Abyan/Documents/AndroidProjects/Pemmob-FP`.
+2. Gunakan Gradle wrapper Windows. Pada pengaturan **Build, Execution, Deployment > Build Tools > Gradle**, pilih JDK/JBR 25 yang terpasang bersama Android Studio. `gradle/gradle-daemon-jvm.properties` memilih Java 25 secara portabel. Java 17 di `compileOptions` adalah target bahasa/bytecode aplikasi.
+3. Pasang Android SDK Platform 37 dan Build Tools yang diminta Gradle melalui SDK Manager. SDK lokal disimpan di `local.properties` (diabaikan Git), misalnya `sdk.dir=C\:/Users/Abyan/AppData/Local/Android/Sdk`. Escape tanda titik dua diperlukan oleh pemeriksaan lint. Jangan menaruh `org.gradle.java.home` absolut di file yang dilacak Git.
+4. Tunggu Gradle Sync, pilih konfigurasi `app`, lalu pilih Xiaomi di daftar perangkat dan tekan **Run**. Wireless debugging/USB debugging harus terhubung dan diotorisasi.
+5. Beri izin kamera untuk kalibrasi. Ukur jarak wajah ke layar sekitar **30 cm**, lalu jaga posisi stabil selama 10 detik. Diperlukan setidaknya 20 sampel valid dan sebaran IPD yang stabil. Tanpa izin atau model wajah, gunakan **Lanjut tanpa kalibrasi** untuk memakai sensor lain.
+6. Gemini API key diisi lewat Setelan aplikasi. Key tidak dimasukkan ke BuildConfig/APK dari `local.properties`, tidak dicetak ke log, dan preferensi DataStore dikecualikan dari backup/transfer. DataStore merupakan penyimpanan privat aplikasi, bukan penyimpanan terenkripsi khusus.
+
+Versi AGP 9.3.3, Gradle 9.5.0, Kotlin 2.4.21, KSP 2.3.6, Hilt 2.60.1 dan dependensi awal dipertahankan. Acuan: [AGP 9.3](https://developer.android.com/build/releases/agp-9-3-0-release-notes), [kompatibilitas Java/Gradle](https://docs.gradle.org/9.5.0/userguide/compatibility.html).
+
+```powershell
+# Jalankan di PowerShell Windows dari folder proyek.
+# JAVA_HOME dapat menunjuk JBR Android Studio yang terdeteksi di komputer ini.
+$env:JAVA_HOME = 'C:\Program Files\Android\Android Studio\jbr'
+.\gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+.\gradlew.bat :app:connectedDebugAndroidTest
+adb install -r app\build\outputs\apk\debug\app-debug.apk
+adb shell am start -n com.lumiposture.app/.MainActivity
+```
+
+APK debug berada di `app/build/outputs/apk/debug/app-debug.apk`. Jangan menjalankan Gradle Windows dan Linux bersamaan. Operasi Git yang memerlukan autentikasi dilakukan melalui WSL.
+
+### Perilaku dan batasan metrik terkini
+
+- Pengambilan data berlangsung di layar sesi aktif. Kamera, listener sensor, dan AudioRecord berhenti ketika sesi ditutup atau aplikasi keluar dari foreground. Menyembunyikan pratinjau hanya menyembunyikan gambar; kamera tetap dipakai selama sesi aktif.
+- Nilai tidak tersedia disimpan sebagai `NULL`, tidak ditampilkan sebagai angka sehat dan tidak dikirim ke Gemini. UI membedakan menunggu, dinonaktifkan, izin ditolak, tidak didukung, gagal, data usang, wajah hilang, dan perlu kalibrasi. Sensor on-change mempertahankan nilai selama registrasinya aktif; sensor kontinu dan kamera memerlukan data baru.
+- Jarak kamera adalah estimasi rasio IPD terhadap baseline 30 cm. Memerlukan kalibrasi dan wajah valid dengan resolusi analisis konsisten. Tidak ada baseline IPD buatan. Proximity hanya sinyal objek dekat/jauh, tidak menjamin objek itu wajah dan tidak pernah diubah menjadi 5 cm.
+- Frame kamera diputar menjadi piksel tegak sebelum inferensi agar overlay dan IPD memakai orientasi yang sama. Baseline sebelum perbaikan ini harus dikalibrasi ulang; nilai lama tidak diaktifkan otomatis.
+- Estimasi orientasi menggabungkan kemiringan HP dengan orientasi kepala terhadap kamera. Ini bukan pengukuran langsung sudut anatomis leher atau diagnosis posisi tubuh.
+- Kedipan baru dipakai setelah 60 detik pengamatan wajah terus-menerus. Wajah hilang mereset jendela pengamatan. Sampling kamera sekitar 6 FPS dapat melewatkan kedipan singkat; BPM, squint, atau EAR bukan diagnosis kelelahan mata.
+- Mikrofon mengukur amplitudo PCM dalam **dBFS** relatif terhadap skala digital maksimum. Ini belum dB SPL terkalibrasi dan tidak dibandingkan dengan batas kebisingan 55/65 dB. AudioRecord membaca jendela singkat secara berkala tanpa menyimpan file suara.
+- Skor adalah indeks aturan aplikasi dari kedipan, estimasi jarak, estimasi orientasi, dan cahaya yang valid, dengan bobot yang dinormalisasi ulang. Amplitudo mikrofon tidak ikut skor. Skor parsial tidak menilai sensor yang hilang; tanpa metrik skor valid, skor kosong. Skor bukan bukti kondisi sehat.
+- Grafik memakai segmen data lengkap terpanjang, waktu sampel nyata dalam detik, dan tidak menggandakan sampel tunggal atau menyambung celah data. Grafik deskriptif tidak membuktikan korelasi statistik atau sebab-akibat.
+- Analisis cloud diberi label Gemini; fallback diberi label aturan lokal dan alasan fallback. Key kosong, offline, respons tidak valid, HTTP error, serta batas waktu 20 detik menggunakan aturan lokal. Pembatalan coroutine tetap diteruskan.
+- Model utama analisis adalah `gemini-3.1-flash-lite`, yang berhasil mengembalikan format laporan lengkap saat pengujian proyek ini. HTTP 404 (model tidak tersedia untuk proyek) atau 503 (layanan sibuk) mencoba `gemini-3.8-flash` satu kali dalam batas waktu 20 detik yang sama. Error key/izin dan kuota tidak memicu pergantian model. `gemini-2.5-flash` pada dokumentasi awal tidak lagi dipakai: saat pengujian key pengguna pada 26 November 2026, model itu membalas 404 karena akses pengguna baru ditutup. Model 3.8 dan 3.5 Flash-Lite sempat membalas 503, sehingga pemilihan utama mengikuti hasil uji laporan nyata, bukan hanya daftar model API.
+- Room versi 2 menggunakan transaksi untuk menyimpan sesi, sampel, dan insight. Migrasi 1 ke 2 mempertahankan baris serta relasi lama. Angka lama tanpa penanda validitas dipertahankan di database, tetapi disembunyikan dari analisis dan ditandai belum diverifikasi.
+
+### Pengujian demo
+
+Unit test mencakup skor parsial/kosong, data usang/hilang, proximity tanpa sentimeter, kalibrasi, agregasi sesi pendek/celah data, pengingat, dan penghilangan nilai kosong dari JSON. Instrumentation test memakai database terpisah untuk migrasi serta persistensi setelah database dibuka ulang.
+
+Di HP fisik, periksa izin kamera/mikrofon yang ditolak lalu diberikan, kalibrasi 30 cm, wajah hilang, perubahan cahaya/kemiringan/amplitudo suara, toggle sensor, sembunyikan pratinjau, background/resume, akhiri sesi, laporan, riwayat setelah restart, dan fallback Gemini. Menjalankan unit test tidak menggantikan pengujian akurasi sensor fisik. Model `app/src/main/assets/face_landmarker.task` harus tersedia.
+
+```bash
+# WSL, setelah meninjau diff dan hasil pengujian. Tidak dijalankan otomatis.
+cd /mnt/c/Users/Abyan/Documents/AndroidProjects/Pemmob-FP
+git status --short
+git diff --check
+git add .gitignore README.md gradle.properties app
+git diff --cached --stat
+git commit -m "Stabilize LumiPosture Windows build and session data validity"
+git push -u origin abyan/lumiposture-stabilization
+```
+
+## Rancangan dan dokumentasi awal
+
+Bagian berikut dipertahankan dari implementasi awal. Klaim kesehatan, dB, sudut leher, nilai fallback, serta korelasi sebab-akibat di bagian ini merupakan rancangan lama yang telah dibatasi oleh catatan stabilisasi di atas.
+
 **Real-Time Eye Health & Study Ergonomics Assistant (Android Native)**
 
 LumiPosture adalah aplikasi Android *digital health* dan *assistive ergonomics* berbasis **Sensor Fusion** dan **Hybrid AI** (*Pre-Trained On-Device Vision AI* + *Gemini Analytical AI*) untuk membantu pengguna menjaga kesehatan mata dan postur tulang leher secara *real-time* selama menggunakan HP.

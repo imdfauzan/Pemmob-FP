@@ -38,6 +38,7 @@ import com.lumiposture.app.presentation.components.SecondaryPillButton
 import com.lumiposture.app.presentation.components.StatusPillTag
 import com.lumiposture.app.presentation.components.TabularMetricText
 import com.lumiposture.app.presentation.home.scoreToStatus
+import com.lumiposture.app.presentation.components.metric
 import com.lumiposture.app.presentation.home.statusLabelForScore
 import com.lumiposture.app.presentation.report.components.CorrelationLineChart
 import com.lumiposture.app.presentation.session.components.LiveErgonomicGauge
@@ -55,7 +56,7 @@ fun SessionReportScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val colors = LumiTheme.colors
 
-    if (uiState.isLoading || (uiState.report == null)) {
+    if (uiState.isLoading) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -63,6 +64,13 @@ fun SessionReportScreen(
             contentAlignment = Alignment.Center,
         ) {
             CircularProgressIndicator(color = colors.primary)
+        }
+        return
+    }
+    if (uiState.report == null) {
+        Column(Modifier.fillMaxSize().background(colors.canvas).statusBarsPadding().padding(24.dp)) {
+            Text("Laporan tidak ditemukan atau gagal dimuat.", color = colors.textPrimary)
+            SecondaryPillButton(text = "Kembali", onClick = onNavigateBack)
         }
         return
     }
@@ -117,7 +125,10 @@ fun SessionReportScreen(
             }
         }
 
-        // Overall Score & Summary Card
+        item {
+            Text("Skor memakai metrik valid dan dapat parsial. Estimasi orientasi bukan sudut leher anatomis; dBFS bukan dB SPL. Kedipan bukan diagnosis. Grafik bukan bukti sebab-akibat.",
+                style = MaterialTheme.typography.bodySmall, color = colors.textSecondary)
+        }
         item {
             LumiCard {
                 Row(
@@ -131,7 +142,7 @@ fun SessionReportScreen(
                     ) {
                         StatusPillTag(
                             status = scoreToStatus(session.overallScore),
-                            label = insight?.statusLabel ?: statusLabelForScore(session.overallScore),
+                            label = session.statusLabel ?: statusLabelForScore(session.overallScore),
                         )
                         TabularMetricText(
                             text = "$durationMins menit sesi",
@@ -146,6 +157,7 @@ fun SessionReportScreen(
                     }
                     LiveErgonomicGauge(
                         score = session.overallScore,
+                        isPartial = session.overallScore != null && listOf(session.avgBlinkRate, session.avgDistanceCm, session.avgNeckAngleDeg, session.avgLux).any { it == null },
                         size = 118.dp,
                     )
                 }
@@ -156,7 +168,7 @@ fun SessionReportScreen(
         item {
             LumiCard {
                 Text(
-                    text = "Data Rata-Rata 6 Sensor",
+                    text = "Rata-rata Metrik Valid",
                     style = MaterialTheme.typography.titleLarge,
                     color = colors.textPrimary,
                 )
@@ -165,17 +177,17 @@ fun SessionReportScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    ReportMetricStat("Kedipan", String.format(Locale.US, "%.1f BPM", session.avgBlinkRate), Modifier.weight(1f))
-                    ReportMetricStat("Jarak", String.format(Locale.US, "%.1f cm", session.avgDistanceCm), Modifier.weight(1f))
-                    ReportMetricStat("Leher", String.format(Locale.US, "%.1f deg", session.avgNeckAngleDeg), Modifier.weight(1f))
+                    ReportMetricStat("Est. kedipan", session.avgBlinkRate.metric("BPM"), Modifier.weight(1f))
+                    ReportMetricStat("Est. jarak", session.avgDistanceCm.metric("cm"), Modifier.weight(1f))
+                    ReportMetricStat("Est. orientasi", session.avgNeckAngleDeg.metric("deg"), Modifier.weight(1f))
                 }
                 Spacer(modifier = Modifier.height(14.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    ReportMetricStat("Cahaya", String.format(Locale.US, "%.0f Lux", session.avgLux), Modifier.weight(1f))
-                    ReportMetricStat("Kebisingan", String.format(Locale.US, "%.0f dB", session.avgNoiseDb), Modifier.weight(1f))
+                    ReportMetricStat("Cahaya", session.avgLux.metric("Lux", 0), Modifier.weight(1f))
+                    ReportMetricStat("Amplitudo mic", session.avgNoiseDb.metric("dBFS"), Modifier.weight(1f))
                     ReportMetricStat("Sampel", "${report.samples.size} titik", Modifier.weight(1f))
                 }
             }
@@ -195,7 +207,7 @@ fun SessionReportScreen(
                         modifier = Modifier.size(20.dp),
                     )
                     Text(
-                        text = "Grafik Korelasi",
+                        text = "Grafik Sesi",
                         style = MaterialTheme.typography.titleLarge,
                         color = colors.textPrimary,
                     )
@@ -211,9 +223,9 @@ fun SessionReportScreen(
                 LumiCard {
                     Text(
                         text = if (insight.isGeneratedByCloudAi) {
-                            "Analisis Korelasi (Gemini 2.5 Flash)"
+                            "Analisis Sesi (Gemini)"
                         } else {
-                            "Hasil Analisis (Offline)"
+                            "Ringkasan Aturan Lokal"
                         },
                         style = MaterialTheme.typography.labelLarge,
                         color = colors.primary,
@@ -234,7 +246,7 @@ fun SessionReportScreen(
                     if (insight.sensorCorrelations.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            text = "Temuan Korelasi Sensor",
+                            text = "Observasi Data Sensor",
                             style = MaterialTheme.typography.titleMedium,
                             color = colors.textPrimary,
                         )

@@ -1,5 +1,10 @@
 package com.lumiposture.app.presentation.settings
 
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
+import androidx.compose.ui.platform.LocalContext
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -36,6 +41,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -62,6 +69,7 @@ fun SettingsScreen(
     val prefs = uiState.preferences
     val caps = uiState.capabilities
     val colors = LumiTheme.colors
+    val context = LocalContext.current
     var showClearConfirm by remember { mutableStateOf(false) }
 
     var apiKeyDraft by remember { mutableStateOf("") }
@@ -232,7 +240,7 @@ fun SettingsScreen(
                 ) { viewModel.updateMinDistanceCm(it.roundToInt()) }
 
                 ThresholdSliderRow(
-                    label = "Batas Sudut Leher (Tech-Neck)",
+                    label = "Batas Estimasi Orientasi HP/Kepala",
                     valueText = "${prefs.maxNeckAngleThresholdDeg} deg",
                     value = prefs.maxNeckAngleThresholdDeg.toFloat(),
                     range = 20f..45f,
@@ -278,6 +286,12 @@ fun SettingsScreen(
         // Per-Sensor Controls & System Status
         item {
             LumiCard {
+                SecondaryPillButton(
+                    text = "Buka Izin Kamera dan Mikrofon",
+                    onClick = { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(modifier = Modifier.height(12.dp))
                 Text(
                     text = "Status Sistem & Sensor",
                     style = MaterialTheme.typography.titleLarge,
@@ -311,7 +325,7 @@ fun SettingsScreen(
                 SensorToggleRow(
                     title = "Proximity Sensor",
                     hardwareAvailable = caps.hasProximitySensor,
-                    description = "Mengukur jarak HP ke wajah",
+                    description = "Sinyal objek dekat/jauh, bukan jarak dalam cm",
                     checked = prefs.enableProximitySensor && caps.hasProximitySensor,
                     onCheckedChange = viewModel::setProximitySensorEnabled,
                 )
@@ -320,7 +334,7 @@ fun SettingsScreen(
                 SensorToggleRow(
                     title = "Accelerometer",
                     hardwareAvailable = caps.hasAccelerometer,
-                    description = "Mendeteksi kemiringan HP dan postur",
+                    description = "Kemiringan HP, fallback bila rotation vector tidak dipakai",
                     checked = prefs.enableAccelerometer && caps.hasAccelerometer,
                     onCheckedChange = viewModel::setAccelerometerEnabled,
                 )
@@ -328,7 +342,7 @@ fun SettingsScreen(
 
                 val hasGyroOrFusion = caps.hasGyroscope || caps.hasRotationVector
                 SensorToggleRow(
-                    title = "Gyroscope",
+                    title = "Gyroscope / Rotation Vector",
                     hardwareAvailable = hasGyroOrFusion,
                     description = "Menstabilisasi sudut kemiringan HP",
                     checked = prefs.enableGyroscope && hasGyroOrFusion,
@@ -337,9 +351,9 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(10.dp))
 
                 SensorToggleRow(
-                    title = "Mikrofon (dB)",
+                    title = "Amplitudo Mikrofon (dBFS)",
                     hardwareAvailable = caps.hasMicrophone,
-                    description = "Pengukur kebisingan sekitar tanpa merekam audio",
+                    description = "Amplitudo digital tanpa menyimpan file audio, belum dB SPL",
                     checked = prefs.enableMicrophone && caps.hasMicrophone,
                     onCheckedChange = viewModel::setMicrophoneEnabled,
                 )
@@ -410,6 +424,7 @@ private fun SensorToggleRow(
             )
         }
         Switch(
+            modifier = Modifier.semantics { contentDescription = title },
             checked = checked,
             enabled = hardwareAvailable,
             onCheckedChange = onCheckedChange,
@@ -447,6 +462,7 @@ private fun ThresholdSliderRow(
             )
         }
         Slider(
+            modifier = Modifier.semantics { contentDescription = label },
             value = value,
             onValueChange = onValueChange,
             valueRange = range,
@@ -489,6 +505,7 @@ private fun ToggleSettingRow(
             )
         }
         Switch(
+            modifier = Modifier.semantics { contentDescription = title },
             checked = checked,
             onCheckedChange = onCheckedChange,
             colors = SwitchDefaults.colors(

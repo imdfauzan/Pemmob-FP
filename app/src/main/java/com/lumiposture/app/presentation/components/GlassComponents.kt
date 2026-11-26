@@ -352,6 +352,7 @@ fun StatusPillTag(
 ) {
     val colors = LumiTheme.colors
     val accent = when (status) {
+        MetricStatus.UNAVAILABLE -> colors.textSecondary
         MetricStatus.OPTIMAL -> colors.optimal
         MetricStatus.WARNING -> colors.warning
         MetricStatus.CRITICAL -> colors.critical

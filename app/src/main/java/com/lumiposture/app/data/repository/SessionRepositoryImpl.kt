@@ -1,6 +1,8 @@
 package com.lumiposture.app.data.repository
 
 import com.lumiposture.app.data.local.dao.SessionDao
+import com.lumiposture.app.data.local.AppDatabase
+import androidx.room.withTransaction
 import com.lumiposture.app.data.local.dao.SessionWithDetails
 import com.lumiposture.app.data.local.entity.AiInsightEntity
 import com.lumiposture.app.data.local.entity.StudySessionEntity
@@ -20,6 +22,7 @@ import javax.inject.Singleton
 class SessionRepositoryImpl @Inject constructor(
     private val sessionDao: SessionDao,
     private val json: Json,
+    private val database: AppDatabase,
 ) : SessionRepository {
 
     override fun observeAllSessions(): Flow<List<StudySessionSummary>> {
@@ -32,14 +35,14 @@ class SessionRepositoryImpl @Inject constructor(
                     endTimeMillis = e.endTimeMillis,
                     durationSeconds = e.durationSeconds,
                     studyMode = parseStudyMode(e.studyMode),
-                    overallScore = e.overallScore,
-                    avgBlinkRate = e.avgBlinkRate,
-                    avgDistanceCm = e.avgDistanceCm,
-                    avgNeckAngleDeg = e.avgNeckAngleDeg,
-                    avgLux = e.avgLux,
-                    avgNoiseDb = e.avgNoiseDb,
+                    overallScore = e.overallScore.takeIf { e.dataVersion >= 2 },
+                    avgBlinkRate = e.avgBlinkRate.takeIf { e.dataVersion >= 2 },
+                    avgDistanceCm = e.avgDistanceCm.takeIf { e.dataVersion >= 2 },
+                    avgNeckAngleDeg = e.avgNeckAngleDeg.takeIf { e.dataVersion >= 2 },
+                    avgLux = e.avgLux.takeIf { e.dataVersion >= 2 },
+                    avgNoiseDb = e.avgNoiseDb.takeIf { e.dataVersion >= 2 },
                     totalWarningsTriggered = e.totalWarningsTriggered,
-                    statusLabel = item.insight?.statusLabel,
+                    statusLabel = if (e.dataVersion < 2) "Data lama belum diverifikasi" else item.insight?.statusLabel,
                     isGeneratedByCloudAi = item.insight?.isGeneratedByCloudAi,
                 )
             }
@@ -59,16 +62,16 @@ class SessionRepositoryImpl @Inject constructor(
         endTimeMillis: Long,
         durationSeconds: Int,
         studyMode: StudyMode,
-        overallScore: Int,
-        avgBlinkRate: Float,
-        avgDistanceCm: Float,
-        avgNeckAngleDeg: Float,
-        avgLux: Float,
-        avgNoiseDb: Float,
+        overallScore: Int?,
+        avgBlinkRate: Float?,
+        avgDistanceCm: Float?,
+        avgNeckAngleDeg: Float?,
+        avgLux: Float?,
+        avgNoiseDb: Float?,
         totalWarningsTriggered: Int,
         samples: List<TelemetrySamplePoint>,
         insight: AiInsight,
-    ): Long {
+    ): Long = database.withTransaction {
         val sessionId = sessionDao.insertSession(
             StudySessionEntity(
                 startTimeMillis = startTimeMillis,
@@ -97,12 +100,13 @@ class SessionRepositoryImpl @Inject constructor(
                         ambientLux = point.ambientLux,
                         noiseDb = point.noiseDb,
                         isViolationActive = point.isViolationActive,
+                        screenBrightnessPct = point.screenBrightnessPct,
                     )
                 },
             )
         }
         upsertInsightEntity(sessionId, insight)
-        return sessionId
+        sessionId
     }
 
     override suspend fun updateSessionInsight(sessionId: Long, insight: AiInsight) {
@@ -134,7 +138,7 @@ class SessionRepositoryImpl @Inject constructor(
 
     private fun SessionWithDetails.toDomain(): SessionReport {
         val s = session
-        val domainInsight = insight?.let { i ->
+        val domainInsight = insight?.takeIf { s.dataVersion >= 2 }?.let { i ->
             AiInsight(
                 statusLabel = i.statusLabel,
                 executiveSummary = i.executiveSummary,
@@ -156,17 +160,17 @@ class SessionRepositoryImpl @Inject constructor(
                 endTimeMillis = s.endTimeMillis,
                 durationSeconds = s.durationSeconds,
                 studyMode = parseStudyMode(s.studyMode),
-                overallScore = s.overallScore,
-                avgBlinkRate = s.avgBlinkRate,
-                avgDistanceCm = s.avgDistanceCm,
-                avgNeckAngleDeg = s.avgNeckAngleDeg,
-                avgLux = s.avgLux,
-                avgNoiseDb = s.avgNoiseDb,
+                overallScore = s.overallScore.takeIf { s.dataVersion >= 2 },
+                avgBlinkRate = s.avgBlinkRate.takeIf { s.dataVersion >= 2 },
+                avgDistanceCm = s.avgDistanceCm.takeIf { s.dataVersion >= 2 },
+                avgNeckAngleDeg = s.avgNeckAngleDeg.takeIf { s.dataVersion >= 2 },
+                avgLux = s.avgLux.takeIf { s.dataVersion >= 2 },
+                avgNoiseDb = s.avgNoiseDb.takeIf { s.dataVersion >= 2 },
                 totalWarningsTriggered = s.totalWarningsTriggered,
-                statusLabel = domainInsight?.statusLabel,
+                statusLabel = if (s.dataVersion < 2) "Data lama belum diverifikasi" else domainInsight?.statusLabel,
                 isGeneratedByCloudAi = domainInsight?.isGeneratedByCloudAi,
             ),
-            samples = samples
+            samples = samples.takeIf { s.dataVersion >= 2 }.orEmpty()
                 .asSequence()
                 .sortedBy { it.elapsedSeconds }
                 .map { sample ->
@@ -179,6 +183,7 @@ class SessionRepositoryImpl @Inject constructor(
                         ambientLux = sample.ambientLux,
                         noiseDb = sample.noiseDb,
                         isViolationActive = sample.isViolationActive,
+                        screenBrightnessPct = sample.screenBrightnessPct,
                     )
                 }
                 .toList(),

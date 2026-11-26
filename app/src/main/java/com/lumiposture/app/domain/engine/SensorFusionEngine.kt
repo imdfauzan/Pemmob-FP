@@ -1,171 +1,94 @@
 package com.lumiposture.app.domain.engine
 
-import com.lumiposture.app.domain.model.EnvironmentTelemetry
-import com.lumiposture.app.domain.model.SensorSnapshot
-import com.lumiposture.app.domain.model.StudyMode
-import com.lumiposture.app.domain.model.UserPreferences
-import com.lumiposture.app.domain.model.VisionTelemetry
+import com.lumiposture.app.domain.model.*
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flow
 import javax.inject.Inject
 
-class SensorFusionEngine @Inject constructor(
-    private val scoreCalculator: ErgonomicScoreCalculator,
-) {
-    private var smoothedDistanceCm: Float? = null
-    private var smoothedNeckAngleDeg: Float? = null
-    private var smoothedLux: Float? = null
-    private var smoothedNoiseDb: Float? = null
-
-    fun resetSmoothing() {
-        smoothedDistanceCm = null
-        smoothedNeckAngleDeg = null
-        smoothedLux = null
-        smoothedNoiseDb = null
-    }
+class SensorFusionEngine @Inject constructor(private val scoreCalculator: ErgonomicScoreCalculator) {
+    private val smoothed = mutableMapOf<String, Float>()
+    fun resetSmoothing() = smoothed.clear()
 
     fun fuseStream(
-        visionFlow: Flow<VisionTelemetry>,
-        environmentFlow: Flow<EnvironmentTelemetry>,
-        noiseDbFlow: Flow<Float>,
-        studyModeFlow: Flow<StudyMode>,
-        preferencesFlow: Flow<UserPreferences>,
-        sessionStartTimeMs: () -> Long,
-    ): Flow<SensorSnapshot> = combine(
-        visionFlow,
-        environmentFlow,
-        noiseDbFlow,
-        studyModeFlow,
-        preferencesFlow,
-    ) { vision, env, noiseDb, studyMode, prefs ->
-        fuseSingleTick(
-            vision = vision,
-            env = env,
-            noiseDb = noiseDb,
-            studyMode = studyMode,
-            prefs = prefs,
-            sessionStartTimeMs = sessionStartTimeMs(),
-        )
+        visionFlow: Flow<VisionTelemetry>, environmentFlow: Flow<EnvironmentTelemetry>,
+        noiseDbFlow: Flow<NoiseTelemetry>, studyModeFlow: Flow<StudyMode>,
+        preferencesFlow: Flow<UserPreferences>, sessionStartTimeMs: () -> Long,
+        nowMs: () -> Long = System::currentTimeMillis,
+    ): Flow<SensorSnapshot> {
+        val inputs = combine(visionFlow, environmentFlow, noiseDbFlow, studyModeFlow, preferencesFlow) { v, e, n, m, p ->
+            FusionInputs(v, e, n, m, p)
+        }
+        val clock = flow { while (true) { emit(Unit); delay(200) } }
+        return combine(inputs, clock) { i, _ ->
+            // Inputs may arrive between clock ticks; use collection time for freshness.
+            fuseSingleTick(i.vision, i.env, i.noise, i.mode, i.prefs, sessionStartTimeMs(), nowMs())
+        }
     }
 
     fun fuseSingleTick(
-        vision: VisionTelemetry,
-        env: EnvironmentTelemetry,
-        noiseDb: Float,
-        studyMode: StudyMode,
-        prefs: UserPreferences,
-        sessionStartTimeMs: Long,
+        vision: VisionTelemetry, env: EnvironmentTelemetry, noiseDb: NoiseTelemetry,
+        studyMode: StudyMode, prefs: UserPreferences, sessionStartTimeMs: Long,
+        nowMs: Long = System.currentTimeMillis(),
     ): SensorSnapshot {
-        val nowMs = maxOf(vision.timestampMs, System.currentTimeMillis())
-        val elapsedSec = ((nowMs - sessionStartTimeMs).coerceAtLeast(0L) / 1000L).toInt()
-
-        val camEnabled = prefs.enableFrontCamera
-        val effectiveFaceDetected = camEnabled && vision.faceDetected
-        val effectiveBlinkBpm = if (camEnabled) vision.blinkRateBpm else 15f
-        val effectiveSquintAvg = if (camEnabled) vision.eyeSquintAvg else 0f
-        val effectiveTotalBlinks = if (camEnabled) vision.totalBlinks else 0
-        val effectiveHeadPitch = if (effectiveFaceDetected) vision.headPitchDeg else 0f
-        val effectiveIpd = if (effectiveFaceDetected) vision.ipdPixels else 0f
-        val effectiveFps = if (camEnabled) vision.inferenceFps else 0f
-
-        val rawCamDistanceCm = if (effectiveFaceDetected && (effectiveIpd > 4f)) {
-            val baselineIpd = if (prefs.baselineIpdPx > 10f) prefs.baselineIpdPx else DEFAULT_BASELINE_IPD_PX
-            (BASELINE_DISTANCE_CM * (baselineIpd / effectiveIpd)).coerceIn(8f, 120f)
-        } else if (!camEnabled) {
-            BASELINE_DISTANCE_CM
-        } else {
-            smoothedDistanceCm ?: BASELINE_DISTANCE_CM
+        fun status(enabled: Boolean, source: DataStatus, timestamp: Long, ttl: Long = 3000): DataStatus = when {
+            !enabled -> DataStatus.DISABLED
+            source != DataStatus.AVAILABLE -> source
+            timestamp <= 0 || nowMs - timestamp !in 0..ttl -> DataStatus.STALE
+            else -> DataStatus.AVAILABLE
         }
-
-        val proximityActive = prefs.enableProximitySensor && env.isProximityNear
-        val finalDistanceCm = if (proximityActive) {
-            5f
-        } else if (!camEnabled) {
-            BASELINE_DISTANCE_CM
-        } else {
-            val prev = smoothedDistanceCm ?: rawCamDistanceCm
-            val ema = (DISTANCE_EMA_ALPHA * rawCamDistanceCm) + ((1f - DISTANCE_EMA_ALPHA) * prev)
-            smoothedDistanceCm = ema
-            ema
+        val camera = status(prefs.enableFrontCamera, if (vision.status == DataStatus.AVAILABLE && !vision.faceDetected) DataStatus.NO_FACE else vision.status, vision.timestampMs)
+        val face = camera == DataStatus.AVAILABLE && vision.faceDetected
+        val blinkState = if (face && !vision.blinkWindowReady) DataStatus.WAITING else camera
+        val distanceState = when {
+            camera != DataStatus.AVAILABLE -> camera
+            !prefs.isCalibrated || !prefs.baselineIpdPx.isFinite() || prefs.baselineIpdPx <= 10 -> DataStatus.NEEDS_CALIBRATION
+            !vision.ipdPixels.isFinite() || vision.ipdPixels <= 4 -> DataStatus.FAILED
+            else -> DataStatus.AVAILABLE
         }
-
-        val motionEnabled = prefs.enableAccelerometer || prefs.enableGyroscope
-        val effectiveDevicePitch = if (motionEnabled) env.devicePitchDeg else 12f
-        val effectiveLyingDown = prefs.enableAccelerometer && env.isLyingDown
-
-        val rawNeckAngle = if (effectiveFaceDetected) {
-            (effectiveDevicePitch + effectiveHeadPitch).coerceIn(0f, 90f)
-        } else {
-            effectiveDevicePitch.coerceIn(0f, 90f)
+        val motion = status(prefs.enableAccelerometer || prefs.enableGyroscope, env.motionStatus, env.motionTimestampMs)
+        // On-change sensors retain their last value while the registration remains active.
+        val light = status(prefs.enableLightSensor, env.lightStatus, env.lightTimestampMs, if (env.lightReportsOnChange) Long.MAX_VALUE else 3000)
+        val proximity = status(prefs.enableProximitySensor, env.proximityStatus, env.proximityTimestampMs, if (env.proximityReportsOnChange) Long.MAX_VALUE else 3000)
+        val noise = status(prefs.enableMicrophone, noiseDb.status, noiseDb.timestampMs, 5000)
+        val posture = if (motion != DataStatus.AVAILABLE) motion else camera
+        val near = proximity == DataStatus.AVAILABLE && env.isProximityNear
+        fun smooth(key: String, value: Float?, alpha: Float): Float? {
+            if (value == null || !value.isFinite()) { smoothed.remove(key); return null }
+            return (alpha * value + (1 - alpha) * (smoothed[key] ?: value)).also { smoothed[key] = it }
         }
-        val prevNeck = smoothedNeckAngleDeg ?: rawNeckAngle
-        val finalNeckAngle = ((NECK_EMA_ALPHA * rawNeckAngle) + ((1f - NECK_EMA_ALPHA) * prevNeck))
-            .also { smoothedNeckAngleDeg = it }
-
-        val targetLux = if (prefs.enableLightSensor) env.ambientLux else 200f
-        val prevLux = smoothedLux ?: targetLux
-        val finalLux = (0.35f * targetLux + 0.65f * prevLux).also { smoothedLux = it }
-
-        val targetNoise = if (prefs.enableMicrophone) noiseDb else 36f
-        val prevNoise = smoothedNoiseDb ?: targetNoise
-        val finalNoise = (0.4f * targetNoise + 0.6f * prevNoise).also { smoothedNoiseDb = it }
-
-        val breakdown = scoreCalculator.calculate(
-            blinkRateBpm = effectiveBlinkBpm,
-            eyeSquintAvg = effectiveSquintAvg,
-            distanceCm = finalDistanceCm,
-            isProximityTriggered = proximityActive,
-            neckAngleDeg = finalNeckAngle,
-            isLyingDown = effectiveLyingDown,
-            ambientLux = finalLux,
-            screenBrightnessPct = env.screenBrightnessPct,
-            noiseDb = finalNoise,
-            prefs = prefs,
-        )
-
+        val distance = smooth("distance", if (distanceState == DataStatus.AVAILABLE && face)
+            (BASELINE_DISTANCE_CM * prefs.baselineIpdPx / vision.ipdPixels).coerceIn(8f, 120f) else null, 0.3f)
+        val neck = smooth("posture", if (posture == DataStatus.AVAILABLE && face)
+            (env.devicePitchDeg + vision.headPitchDeg).coerceIn(0f, 90f) else null, 0.35f)
+        val lux = smooth("lux", env.ambientLux.takeIf { light == DataStatus.AVAILABLE && it >= 0 }, 0.35f)
+        val amplitude = smooth("noise", noiseDb.dbfs.takeIf { noise == DataStatus.AVAILABLE }, 0.4f)
+        val blink = vision.blinkRateBpm.takeIf { face && blinkState == DataStatus.AVAILABLE && it.isFinite() }
+        val lying = motion == DataStatus.AVAILABLE && env.isLyingDown && studyMode == StudyMode.HANDHELD
+        val score = scoreCalculator.calculate(blink, vision.eyeSquintAvg, distance, near, neck, lying,
+            lux, env.screenBrightnessPct, amplitude, prefs)
         return SensorSnapshot(
-            timestampMs = nowMs,
-            elapsedSeconds = elapsedSec,
-            studyMode = studyMode,
-            faceDetected = effectiveFaceDetected,
-            blinkRateBpm = effectiveBlinkBpm,
-            totalBlinks = effectiveTotalBlinks,
-            eyeSquintAvg = effectiveSquintAvg,
-            isDrowsyEyesClosed = camEnabled && vision.isDrowsyEyesClosed,
-            distanceCm = finalDistanceCm,
-            isProximityTriggered = proximityActive,
-            devicePitchDeg = effectiveDevicePitch,
-            headPitchDeg = effectiveHeadPitch,
-            neckAngleDeg = finalNeckAngle,
-            isLyingDown = effectiveLyingDown,
-            ambientLux = finalLux,
-            screenBrightnessPct = env.screenBrightnessPct,
-            noiseDb = finalNoise,
-            ipdPixels = effectiveIpd,
-            inferenceFps = effectiveFps,
-            ergonomicScore = breakdown.overallScore,
-            blinkSubScore = breakdown.blinkSubScore,
-            distanceSubScore = breakdown.distanceSubScore,
-            postureSubScore = breakdown.postureSubScore,
-            lightingSubScore = breakdown.lightingSubScore,
-            noiseSubScore = breakdown.noiseSubScore,
-            blinkStatus = breakdown.blinkStatus,
-            distanceStatus = breakdown.distanceStatus,
-            postureStatus = breakdown.postureStatus,
-            lightingStatus = breakdown.lightingStatus,
-            noiseStatus = breakdown.noiseStatus,
-            landmarkPoints = if (camEnabled) vision.landmarkPoints else emptyList(),
-            leftIrisPoint = if (camEnabled) vision.leftIrisPoint else null,
-            rightIrisPoint = if (camEnabled) vision.rightIrisPoint else null,
-            frameWidth = vision.frameWidth,
-            frameHeight = vision.frameHeight,
+            timestampMs = nowMs, elapsedSeconds = ((nowMs - sessionStartTimeMs).coerceAtLeast(0) / 1000).toInt(),
+            studyMode = studyMode, faceDetected = face, blinkRateBpm = blink,
+            cameraDataStatus = camera, blinkDataStatus = blinkState, distanceDataStatus = distanceState,
+            postureDataStatus = posture, lightDataStatus = light, noiseDataStatus = noise, proximityDataStatus = proximity,
+            totalBlinks = vision.totalBlinks, eyeSquintAvg = if (face) vision.eyeSquintAvg else 0f,
+            distanceCm = distance, isProximityTriggered = near,
+            devicePitchDeg = env.devicePitchDeg.takeIf { motion == DataStatus.AVAILABLE },
+            headPitchDeg = vision.headPitchDeg.takeIf { face }, neckAngleDeg = neck, isLyingDown = lying,
+            ambientLux = lux, screenBrightnessPct = env.screenBrightnessPct, noiseDb = amplitude,
+            ipdPixels = if (face) vision.ipdPixels else 0f, inferenceFps = if (face) vision.inferenceFps else 0f,
+            ergonomicScore = score.overallScore, blinkSubScore = score.blinkSubScore, distanceSubScore = score.distanceSubScore,
+            postureSubScore = score.postureSubScore, lightingSubScore = score.lightingSubScore, noiseSubScore = score.noiseSubScore,
+            blinkStatus = score.blinkStatus, distanceStatus = score.distanceStatus, postureStatus = score.postureStatus,
+            lightingStatus = score.lightingStatus, noiseStatus = score.noiseStatus,
+            landmarkPoints = if (face) vision.landmarkPoints else emptyList(),
+            leftIrisPoint = vision.leftIrisPoint.takeIf { face }, rightIrisPoint = vision.rightIrisPoint.takeIf { face },
+            frameWidth = vision.frameWidth, frameHeight = vision.frameHeight,
         )
     }
-
-    companion object {
-        const val BASELINE_DISTANCE_CM = 30f
-        const val DEFAULT_BASELINE_IPD_PX = 115f
-        const val DISTANCE_EMA_ALPHA = 0.30f
-        const val NECK_EMA_ALPHA = 0.35f
-    }
+    private data class FusionInputs(val vision: VisionTelemetry, val env: EnvironmentTelemetry,
+        val noise: NoiseTelemetry, val mode: StudyMode, val prefs: UserPreferences)
+    companion object { const val BASELINE_DISTANCE_CM = 30f }
 }

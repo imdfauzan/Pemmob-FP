@@ -25,6 +25,8 @@ class UserCalibrationDataStore @Inject constructor(
     private object Keys {
         val BASELINE_IPD_PX = floatPreferencesKey("baseline_ipd_px")
         val IS_CALIBRATED = booleanPreferencesKey("is_calibrated")
+        val CALIBRATION_VERSION = intPreferencesKey("calibration_version")
+        val ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
         val MIN_DISTANCE_CM = intPreferencesKey("min_distance_cm")
         val MAX_NECK_ANGLE_DEG = intPreferencesKey("max_neck_angle_deg")
         val MIN_LUX_THRESHOLD = intPreferencesKey("min_lux_threshold")
@@ -42,7 +44,8 @@ class UserCalibrationDataStore @Inject constructor(
     val preferencesFlow: Flow<UserPreferences> = context.lumiDataStore.data.map { prefs ->
         UserPreferences(
             baselineIpdPx = prefs[Keys.BASELINE_IPD_PX] ?: 0f,
-            isCalibrated = prefs[Keys.IS_CALIBRATED] ?: false,
+            isCalibrated = prefs[Keys.IS_CALIBRATED] == true && (prefs[Keys.CALIBRATION_VERSION] ?: 0) >= 2,
+            onboardingCompleted = prefs[Keys.ONBOARDING_COMPLETED] ?: false,
             minDistanceThresholdCm = prefs[Keys.MIN_DISTANCE_CM] ?: 25,
             maxNeckAngleThresholdDeg = prefs[Keys.MAX_NECK_ANGLE_DEG] ?: 30,
             minLuxThreshold = prefs[Keys.MIN_LUX_THRESHOLD] ?: 80,
@@ -59,10 +62,16 @@ class UserCalibrationDataStore @Inject constructor(
     }
 
     suspend fun saveCalibrationBaseline(ipdPx: Float) {
+        require(ipdPx.isFinite() && ipdPx > 10)
         context.lumiDataStore.edit { prefs ->
             prefs[Keys.BASELINE_IPD_PX] = ipdPx
             prefs[Keys.IS_CALIBRATED] = true
+            prefs[Keys.CALIBRATION_VERSION] = 2
         }
+    }
+
+    suspend fun completeOnboarding() {
+        context.lumiDataStore.edit { it[Keys.ONBOARDING_COMPLETED] = true }
     }
 
     @Suppress("unused")

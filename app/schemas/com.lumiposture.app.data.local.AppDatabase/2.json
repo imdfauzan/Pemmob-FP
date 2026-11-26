@@ -1,0 +1,265 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 2,
+    "identityHash": "2745226fa2a2289f93ef763c07656285",
+    "entities": [
+      {
+        "tableName": "study_sessions",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `startTimeMillis` INTEGER NOT NULL, `endTimeMillis` INTEGER NOT NULL, `durationSeconds` INTEGER NOT NULL, `studyMode` TEXT NOT NULL, `overallScore` INTEGER, `avgBlinkRate` REAL, `avgDistanceCm` REAL, `avgNeckAngleDeg` REAL, `avgLux` REAL, `avgNoiseDb` REAL, `totalWarningsTriggered` INTEGER NOT NULL, `dataVersion` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startTimeMillis",
+            "columnName": "startTimeMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endTimeMillis",
+            "columnName": "endTimeMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "durationSeconds",
+            "columnName": "durationSeconds",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "studyMode",
+            "columnName": "studyMode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "overallScore",
+            "columnName": "overallScore",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "avgBlinkRate",
+            "columnName": "avgBlinkRate",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "avgDistanceCm",
+            "columnName": "avgDistanceCm",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "avgNeckAngleDeg",
+            "columnName": "avgNeckAngleDeg",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "avgLux",
+            "columnName": "avgLux",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "avgNoiseDb",
+            "columnName": "avgNoiseDb",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "totalWarningsTriggered",
+            "columnName": "totalWarningsTriggered",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dataVersion",
+            "columnName": "dataVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "telemetry_samples",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `sessionId` INTEGER NOT NULL, `elapsedSeconds` INTEGER NOT NULL, `ergonomicScore` INTEGER, `blinkRateBpm` REAL, `distanceCm` REAL, `neckAngleDeg` REAL, `ambientLux` REAL, `noiseDb` REAL, `isViolationActive` INTEGER NOT NULL, `screenBrightnessPct` INTEGER, FOREIGN KEY(`sessionId`) REFERENCES `study_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sessionId",
+            "columnName": "sessionId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "elapsedSeconds",
+            "columnName": "elapsedSeconds",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ergonomicScore",
+            "columnName": "ergonomicScore",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "blinkRateBpm",
+            "columnName": "blinkRateBpm",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "distanceCm",
+            "columnName": "distanceCm",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "neckAngleDeg",
+            "columnName": "neckAngleDeg",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "ambientLux",
+            "columnName": "ambientLux",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "noiseDb",
+            "columnName": "noiseDb",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "isViolationActive",
+            "columnName": "isViolationActive",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "screenBrightnessPct",
+            "columnName": "screenBrightnessPct",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_telemetry_samples_sessionId",
+            "unique": false,
+            "columnNames": [
+              "sessionId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_telemetry_samples_sessionId` ON `${TABLE_NAME}` (`sessionId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "study_sessions",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "sessionId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "ai_session_insights",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`sessionId` INTEGER NOT NULL, `statusLabel` TEXT NOT NULL, `executiveSummary` TEXT NOT NULL, `primaryRiskFactor` TEXT NOT NULL, `correlationsJson` TEXT NOT NULL, `recommendationsJson` TEXT NOT NULL, `isGeneratedByCloudAi` INTEGER NOT NULL, `createdAtMillis` INTEGER NOT NULL, PRIMARY KEY(`sessionId`), FOREIGN KEY(`sessionId`) REFERENCES `study_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "sessionId",
+            "columnName": "sessionId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "statusLabel",
+            "columnName": "statusLabel",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "executiveSummary",
+            "columnName": "executiveSummary",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "primaryRiskFactor",
+            "columnName": "primaryRiskFactor",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "correlationsJson",
+            "columnName": "correlationsJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "recommendationsJson",
+            "columnName": "recommendationsJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isGeneratedByCloudAi",
+            "columnName": "isGeneratedByCloudAi",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAtMillis",
+            "columnName": "createdAtMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "sessionId"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "study_sessions",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "sessionId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '2745226fa2a2289f93ef763c07656285')"
+    ]
+  }
+}

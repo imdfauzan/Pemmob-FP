@@ -11,6 +11,8 @@ import com.lumiposture.app.domain.engine.LocalRuleBasedInsightEngine
 import com.lumiposture.app.domain.engine.SensorFusionEngine
 import com.lumiposture.app.domain.engine.SessionAggregateInput
 import com.lumiposture.app.domain.model.ActiveAlert
+import com.lumiposture.app.domain.model.DataStatus
+import com.lumiposture.app.domain.model.NoiseTelemetry
 import com.lumiposture.app.domain.model.EnvironmentTelemetry
 import com.lumiposture.app.domain.model.MetricStatus
 import com.lumiposture.app.domain.model.SensorSnapshot
@@ -52,7 +54,7 @@ class DomainEnginesTest {
         assertEquals(MetricStatus.OPTIMAL, result.distanceStatus)
         assertEquals(MetricStatus.OPTIMAL, result.postureStatus)
         assertEquals(MetricStatus.OPTIMAL, result.lightingStatus)
-        assertEquals(MetricStatus.OPTIMAL, result.noiseStatus)
+        assertEquals(MetricStatus.UNAVAILABLE, result.noiseStatus)
     }
 
     @Test
@@ -70,16 +72,16 @@ class DomainEnginesTest {
             prefs = UserPreferences(),
         )
 
-        assertTrue(result.overallScore < 50)
+        assertTrue(requireNotNull(result.overallScore) < 50)
         assertEquals(MetricStatus.CRITICAL, result.blinkStatus)
         assertEquals(MetricStatus.CRITICAL, result.distanceStatus)
         assertEquals(MetricStatus.CRITICAL, result.postureStatus)
         assertEquals(MetricStatus.CRITICAL, result.lightingStatus)
-        assertEquals(MetricStatus.CRITICAL, result.noiseStatus)
+        assertEquals(MetricStatus.UNAVAILABLE, result.noiseStatus)
     }
 
     @Test
-    fun sensorFusion_proximityTriggered_overridesDistanceTo5Cm() {
+    fun sensorFusion_proximityTriggered_doesNotInventCentimeters() {
         fusionEngine.resetSmoothing()
         val snap = fusionEngine.fuseSingleTick(
             vision = VisionTelemetry(
@@ -89,17 +91,20 @@ class DomainEnginesTest {
             ),
             env = EnvironmentTelemetry(
                 isProximityNear = true,
+                proximityStatus = DataStatus.AVAILABLE,
+                proximityTimestampMs = 5000,
                 ambientLux = 180f,
                 devicePitchDeg = 15f,
                 screenBrightnessPct = 45,
             ),
-            noiseDb = 40f,
+            noiseDb = NoiseTelemetry(),
             studyMode = StudyMode.HANDHELD,
             prefs = UserPreferences(baselineIpdPx = 100f, isCalibrated = true),
             sessionStartTimeMs = 0L,
+            nowMs = 5000,
         )
 
-        assertEquals(5f, snap.distanceCm, 0.01f)
+        assertEquals(null, snap.distanceCm)
         assertTrue(snap.isProximityTriggered)
         assertEquals(MetricStatus.CRITICAL, snap.distanceStatus)
     }
@@ -110,6 +115,7 @@ class DomainEnginesTest {
         val snap = fusionEngine.fuseSingleTick(
             vision = VisionTelemetry(
                 faceDetected = true,
+                status = DataStatus.AVAILABLE,
                 ipdPixels = 100f,
                 headPitchDeg = 10f,
                 timestampMs = 2_000L,
@@ -117,15 +123,18 @@ class DomainEnginesTest {
             env = EnvironmentTelemetry(
                 isProximityNear = false,
                 devicePitchDeg = 12f,
+                motionStatus = DataStatus.AVAILABLE,
+                motionTimestampMs = 2000,
             ),
-            noiseDb = 40f,
+            noiseDb = NoiseTelemetry(),
             studyMode = StudyMode.HANDHELD,
             prefs = UserPreferences(baselineIpdPx = 100f, isCalibrated = true),
             sessionStartTimeMs = 0L,
+            nowMs = 2000,
         )
 
-        assertEquals(30f, snap.distanceCm, 0.5f)
-        assertEquals(22f, snap.neckAngleDeg, 0.5f)
+        assertEquals(30f, requireNotNull(snap.distanceCm), 0.5f)
+        assertEquals(22f, requireNotNull(snap.neckAngleDeg), 0.5f)
     }
 
     @Test
@@ -197,12 +206,12 @@ class DomainEnginesTest {
 
     @Test
     fun calibrationUseCase_computesMedianRobustly() {
-        val median = calibrationUseCase.computeMedianIpd(listOf(82f, 200f, 84f, 86f, 85f))
+        val median = calibrationUseCase.computeMedianIpd(List(20) { 85f } + listOf(82f, 200f, 84f, 86f, 85f))
         assertEquals(85f, median!!, 0.01f)
     }
 
     @Test
-    fun sensorFusion_disabledSensors_fallBackToNeutralValues() {
+    fun sensorFusion_disabledSensors_haveNoMeasuredValues() {
         fusionEngine.resetSmoothing()
         val snap = fusionEngine.fuseSingleTick(
             vision = VisionTelemetry(
@@ -219,7 +228,7 @@ class DomainEnginesTest {
                 isLyingDown = true,
                 screenBrightnessPct = 95,
             ),
-            noiseDb = 85f,
+            noiseDb = NoiseTelemetry(85f, DataStatus.AVAILABLE, 3000),
             studyMode = StudyMode.HANDHELD,
             prefs = UserPreferences(
                 enableFrontCamera = false,
@@ -234,11 +243,13 @@ class DomainEnginesTest {
 
         assertFalse(snap.faceDetected)
         assertFalse(snap.isProximityTriggered)
-        assertEquals(30f, snap.distanceCm, 0.1f)
-        assertEquals(15f, snap.blinkRateBpm, 0.1f)
-        assertEquals(200f, snap.ambientLux, 0.1f)
-        assertEquals(36f, snap.noiseDb, 0.1f)
-        assertEquals(12f, snap.neckAngleDeg, 0.1f)
+        assertEquals(null, snap.distanceCm)
+        assertEquals(null, snap.blinkRateBpm)
+        assertEquals(null, snap.ambientLux)
+        assertEquals(null, snap.noiseDb)
+        assertEquals(null, snap.neckAngleDeg)
+        assertEquals(null, snap.ergonomicScore)
+        assertEquals(DataStatus.DISABLED, snap.lightDataStatus)
     }
 
     @OptIn(ExperimentalSerializationApi::class)

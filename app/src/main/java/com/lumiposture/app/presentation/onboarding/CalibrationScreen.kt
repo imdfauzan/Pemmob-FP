@@ -54,6 +54,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import com.lumiposture.app.domain.model.DataStatus
 import com.lumiposture.app.domain.model.MetricStatus
 import com.lumiposture.app.presentation.components.GlassSurface
 import com.lumiposture.app.presentation.components.LumiCard
@@ -110,6 +112,10 @@ fun CalibrationScreen(
     LaunchedEffect(Unit) {
         viewModel.updatePermissionState(checkPermissions())
     }
+    LifecycleResumeEffect(Unit) {
+        viewModel.setForeground(true)
+        onPauseOrDispose { viewModel.setForeground(false) }
+    }
 
     LaunchedEffect(uiState.calibrationCompleted) {
         if (uiState.calibrationCompleted) {
@@ -155,6 +161,15 @@ fun CalibrationScreen(
             }
         }
 
+        SecondaryPillButton(
+            text = "Lanjut tanpa kalibrasi",
+            onClick = viewModel::skipCalibration,
+            enabled = !uiState.isCalibrating,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        if (uiState.visionTelemetry.status == DataStatus.FAILED) {
+            Text("Model wajah atau kamera gagal dimuat. Coba buka ulang atau lanjut dengan sensor yang tersedia.", color = colors.critical)
+        }
         if (!uiState.permissionsGranted) {
             PrivacyPermissionStep(
                 onRequestPermissions = {
@@ -211,7 +226,7 @@ fun CalibrationScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Column {
+                        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                             Text(
                                 text = if (vision.faceDetected) "Wajah Terdeteksi" else "Posisikan Wajah",
                                 style = MaterialTheme.typography.titleMedium,
@@ -316,7 +331,7 @@ private fun PrivacyPermissionStep(
                 tint = colors.primary,
             )
             Text(
-                text = "Privasi Terjamin (100% On-Device)",
+                text = "Kamera dan audio diproses di HP",
                 style = MaterialTheme.typography.titleLarge,
                 color = colors.textPrimary,
             )
@@ -337,8 +352,8 @@ private fun PrivacyPermissionStep(
         Spacer(modifier = Modifier.height(14.dp))
         PermissionDetailRow(
             icon = Icons.Rounded.GraphicEq,
-            title = "Mikrofon (Pengukur Desibel Ambien)",
-            description = "Membaca intensitas kebisingan ruangan dalam dB tanpa merekam atau menyimpan suara.",
+            title = "Mikrofon (Amplitudo dBFS)",
+            description = "Membaca amplitudo digital tanpa menyimpan file audio. Belum dikalibrasi sebagai dB SPL.",
         )
     }
 
@@ -416,13 +431,13 @@ private fun SensorDiagnosticsCard(uiState: CalibrationUiState) {
             }
             StatusPillTag(
                 status = if (caps.availableHardwareCount >= 5) MetricStatus.OPTIMAL else MetricStatus.WARNING,
-                label = "${caps.availableHardwareCount}/6 Aktif",
+                label = "${caps.availableHardwareCount}/6 Tersedia",
             )
         }
         Spacer(modifier = Modifier.height(14.dp))
 
         DiagnosticRow(name = "Kamera Depan", available = caps.hasFrontCamera, fallbackLabel = "Tidak Ada")
-        DiagnosticRow(name = "Ambient Light (Lux)", available = caps.hasLightSensor, fallbackLabel = "Fallback Default")
+        DiagnosticRow(name = "Ambient Light (Lux)", available = caps.hasLightSensor, fallbackLabel = "Tidak didukung")
         DiagnosticRow(name = "Proximity Sensor", available = caps.hasProximitySensor, fallbackLabel = "Tidak Ada")
         DiagnosticRow(name = "Accelerometer", available = caps.hasAccelerometer, fallbackLabel = "Tidak Ada")
         DiagnosticRow(name = "Gyroscope / Rotation", available = caps.hasGyroscope || caps.hasRotationVector, fallbackLabel = "Fallback Accel")

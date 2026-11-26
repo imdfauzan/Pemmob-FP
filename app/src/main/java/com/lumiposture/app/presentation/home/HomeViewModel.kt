@@ -23,7 +23,7 @@ import kotlin.math.roundToInt
 
 data class DailyTrendPoint(
     val dayLabel: String,
-    val avgScore: Int,
+    val avgScore: Int?,
     val sessionCount: Int,
 )
 
@@ -33,7 +33,7 @@ data class HomeUiState(
     val recentSessions: List<StudySessionSummary> = emptyList(),
     val weeklyTrends: List<DailyTrendPoint> = emptyList(),
     val weeklyTotalMinutes: Int = 0,
-    val weeklyAverageScore: Int = 0,
+    val weeklyAverageScore: Int? = null,
     val preferences: UserPreferences = UserPreferences(),
 )
 
@@ -66,11 +66,7 @@ class HomeViewModel @Inject constructor(
         val trends = (0L..6L).map { offset ->
             val date = weekStart.plusDays(offset)
             val daySessions = groupedByDate[date].orEmpty()
-            val avg = if (daySessions.isNotEmpty()) {
-                daySessions.asSequence().map { it.overallScore }.average().roundToInt()
-            } else {
-                0
-            }
+            val avg = daySessions.mapNotNull { it.overallScore }.takeIf { it.isNotEmpty() }?.average()?.roundToInt()
             DailyTrendPoint(
                 dayLabel = date.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.forLanguageTag("id-ID")),
                 avgScore = avg,
@@ -79,11 +75,7 @@ class HomeViewModel @Inject constructor(
         }
 
         val totalSec = weeklySessions.sumOf { it.durationSeconds }
-        val avgWeekly = if (weeklySessions.isNotEmpty()) {
-            weeklySessions.asSequence().map { it.overallScore }.average().roundToInt()
-        } else {
-            0
-        }
+        val avgWeekly = weeklySessions.mapNotNull { it.overallScore }.takeIf { it.isNotEmpty() }?.average()?.roundToInt()
 
         HomeUiState(
             selectedMode = mode,

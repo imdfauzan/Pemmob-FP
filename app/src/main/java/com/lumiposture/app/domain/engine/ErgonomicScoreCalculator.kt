@@ -6,7 +6,7 @@ import javax.inject.Inject
 import kotlin.math.roundToInt
 
 data class ScoreBreakdown(
-    val overallScore: Int,
+    val overallScore: Int?,
     val blinkSubScore: Int,
     val distanceSubScore: Int,
     val postureSubScore: Int,
@@ -22,40 +22,42 @@ data class ScoreBreakdown(
 class ErgonomicScoreCalculator @Inject constructor() {
 
     fun calculate(
-        blinkRateBpm: Float,
+        blinkRateBpm: Float?,
         eyeSquintAvg: Float,
-        distanceCm: Float,
+        distanceCm: Float?,
         isProximityTriggered: Boolean,
-        neckAngleDeg: Float,
+        neckAngleDeg: Float?,
         isLyingDown: Boolean,
-        ambientLux: Float,
-        screenBrightnessPct: Int,
-        noiseDb: Float,
+        ambientLux: Float?,
+        screenBrightnessPct: Int?,
+        noiseDb: Float?,
         prefs: UserPreferences,
     ): ScoreBreakdown {
-        val (blinkScore, blinkStatus) = scoreBlink(blinkRateBpm, eyeSquintAvg)
-        val (distScore, distStatus) = scoreDistance(
-            distanceCm = distanceCm,
+        val unavailable = 0 to MetricStatus.UNAVAILABLE
+        val (blinkScore, blinkStatus) = blinkRateBpm?.takeIf { it.isFinite() }?.let { scoreBlink(it, eyeSquintAvg) } ?: unavailable
+        val (distScore, distStatus) = if (isProximityTriggered) 10 to MetricStatus.CRITICAL else distanceCm?.takeIf { it.isFinite() }?.let { scoreDistance(
+            distanceCm = it,
             isProximityTriggered = isProximityTriggered,
             minDistanceCm = prefs.minDistanceThresholdCm.toFloat(),
-        )
-        val (postureScore, postureStatus) = scorePosture(
-            neckAngleDeg = neckAngleDeg,
+        ) } ?: unavailable
+        val (postureScore, postureStatus) = neckAngleDeg?.takeIf { it.isFinite() }?.let { scorePosture(
+            neckAngleDeg = it,
             isLyingDown = isLyingDown,
             maxNeckAngleDeg = prefs.maxNeckAngleThresholdDeg.toFloat(),
-        )
-        val (lightingScore, lightingStatus) = scoreLighting(
-            ambientLux = ambientLux,
+        ) } ?: unavailable
+        val (lightingScore, lightingStatus) = ambientLux?.takeIf { it.isFinite() }?.let { scoreLighting(
+            ambientLux = it,
             screenBrightnessPct = screenBrightnessPct,
             minLux = prefs.minLuxThreshold.toFloat(),
-        )
-        val (noiseScore, noiseStatus) = scoreNoise(noiseDb)
-
-        val weighted = ((0.25f * blinkScore) +
-            (0.25f * distScore) +
-            (0.25f * postureScore) +
-            (0.15f * lightingScore) +
-            (0.10f * noiseScore)).roundToInt().coerceIn(0, 100)
+        ) } ?: unavailable
+        // dBFS describes digital amplitude, not calibrated environmental loudness.
+        val (noiseScore, noiseStatus) = unavailable
+        val valid = listOf(
+            Triple(blinkScore, blinkStatus, 0.25f), Triple(distScore, distStatus, 0.25f),
+            Triple(postureScore, postureStatus, 0.25f), Triple(lightingScore, lightingStatus, 0.15f),
+        ).filter { it.second != MetricStatus.UNAVAILABLE }
+        val weighted = if (valid.isEmpty()) null else
+            (valid.sumOf { (it.first * it.third).toDouble() } / valid.sumOf { it.third.toDouble() }).roundToInt().coerceIn(0, 100)
 
         return ScoreBreakdown(
             overallScore = weighted,
@@ -148,13 +150,13 @@ class ErgonomicScoreCalculator @Inject constructor() {
 
     private fun scoreLighting(
         ambientLux: Float,
-        screenBrightnessPct: Int,
+        screenBrightnessPct: Int?,
         minLux: Float,
     ): Pair<Int, MetricStatus> {
-        val glareRisk = ambientLux < minLux && screenBrightnessPct > 65
+        val glareRisk = ambientLux < minLux && screenBrightnessPct?.let { it > 65 } == true
         val tooDark = ambientLux < 40f
         val score = when {
-            tooDark -> if (screenBrightnessPct > 65) 25 else 38
+            tooDark -> if (screenBrightnessPct?.let { it > 65 } == true) 25 else 38
             glareRisk -> 42
             ambientLux < minLux -> 62
             ambientLux in 150f..500f -> 100
@@ -172,17 +174,4 @@ class ErgonomicScoreCalculator @Inject constructor() {
         return score.coerceIn(0, 100) to status
     }
 
-    private fun scoreNoise(noiseDb: Float): Pair<Int, MetricStatus> {
-        val score = when {
-            noiseDb <= 50f -> 100
-            noiseDb <= 65f -> (100f - ((noiseDb - 50f) / 15f) * 28f).roundToInt()
-            else -> (68f - ((noiseDb - 65f) / 25f).coerceIn(0f, 1f) * 48f).roundToInt()
-        }
-        val status = when {
-            noiseDb > 65f -> MetricStatus.CRITICAL
-            noiseDb > 55f -> MetricStatus.WARNING
-            else -> MetricStatus.OPTIMAL
-        }
-        return score.coerceIn(0, 100) to status
-    }
 }

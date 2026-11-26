@@ -2,6 +2,7 @@ package com.lumiposture.app.data.sensor
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Matrix
 import android.os.SystemClock
 import android.util.Log
 import androidx.camera.core.ImageProxy
@@ -12,6 +13,7 @@ import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.google.mediapipe.tasks.vision.facelandmarker.FaceLandmarker
 import com.google.mediapipe.tasks.vision.facelandmarker.FaceLandmarkerResult
 import com.lumiposture.app.domain.model.NormalizedPoint
+import com.lumiposture.app.domain.model.DataStatus
 import com.lumiposture.app.domain.model.VisionTelemetry
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -70,12 +72,14 @@ class FaceLandmarkerHelper @Inject constructor(
                 .setResultListener(::onFaceLandmarkerResult)
                 .setErrorListener { error ->
                     Log.w(TAG, "MediaPipe error: ${error.message}")
+                    reportStatus(DataStatus.FAILED)
                 }
                 .build()
 
             faceLandmarker = FaceLandmarker.createFromOptions(context, options)
         }.onFailure { throwable ->
             Log.e(TAG, "Failed to initialize FaceLandmarker", throwable)
+            reportStatus(DataStatus.FAILED)
         }
     }
 
@@ -90,6 +94,7 @@ class FaceLandmarkerHelper @Inject constructor(
         _telemetryFlow.value = VisionTelemetry()
     }
 
+    @Synchronized
     fun analyzeImageProxy(imageProxy: ImageProxy) {
         val landmarker = faceLandmarker
         val nowMs = SystemClock.uptimeMillis()
@@ -116,18 +121,22 @@ class FaceLandmarkerHelper @Inject constructor(
             imageProxy.close()
         } ?: return
 
-        val mpImage = BitmapImageBuilder(bitmap).build()
-        val processingOptions = ImageProcessingOptions.builder()
-            .setRotationDegrees(rotationDegrees)
-            .build()
+        // Infer upright pixels so preview landmarks and IPD use the same coordinate system.
+        val upright = if (rotationDegrees == 0) bitmap else Bitmap.createBitmap(
+            bitmap, 0, 0, bitmap.width, bitmap.height,
+            Matrix().apply { postRotate(rotationDegrees.toFloat()) }, true,
+        ).also { if (it !== bitmap) bitmap.recycle() }
+        val mpImage = BitmapImageBuilder(upright).build()
 
         val monotonicTs = maxOf(nowMs, lastSentTimestampMs + 1L)
         lastSentTimestampMs = monotonicTs
 
         runCatching {
-            landmarker.detectAsync(mpImage, processingOptions, monotonicTs)
+            landmarker.detectAsync(mpImage, monotonicTs)
         }.onFailure {
+            mpImage.close()
             Log.w(TAG, "detectAsync error: ${it.message}")
+            reportStatus(DataStatus.FAILED)
         }
     }
 
@@ -136,10 +145,8 @@ class FaceLandmarkerHelper @Inject constructor(
         val height = imageProxy.height
         val plane = imageProxy.planes[0]
         if ((imageProxy.planes.size == 1) && (plane.pixelStride == 4) && (plane.rowStride == width * 4)) {
-            val bmp = reusableBitmap?.takeIf { it.width == width && it.height == height }
-                ?: androidx.core.graphics.createBitmap(width, height, Bitmap.Config.ARGB_8888).also {
-                    reusableBitmap = it
-                }
+            // Each async request owns its bitmap until MediaPipe finishes processing it.
+            val bmp = androidx.core.graphics.createBitmap(width, height, Bitmap.Config.ARGB_8888)
             plane.buffer.rewind()
             bmp.copyPixelsFromBuffer(plane.buffer)
             return bmp
@@ -147,7 +154,8 @@ class FaceLandmarkerHelper @Inject constructor(
         return imageProxy.toBitmap()
     }
 
-    private fun onFaceLandmarkerResult(result: FaceLandmarkerResult, @Suppress("UNUSED_PARAMETER") input: com.google.mediapipe.framework.image.MPImage) {
+    private fun onFaceLandmarkerResult(result: FaceLandmarkerResult, input: com.google.mediapipe.framework.image.MPImage) {
+        input.close()
         val ts = result.timestampMs()
         if (sessionStartMs == 0L) sessionStartMs = ts
 
@@ -164,13 +172,18 @@ class FaceLandmarkerHelper @Inject constructor(
 
         val landmarksList = result.faceLandmarks()
         if (landmarksList.isEmpty()) {
+            sessionStartMs = 0L
+            blinkTimestamps.clear()
+            wasEyeClosed = false
             _telemetryFlow.value = _telemetryFlow.value.copy(
+                status = DataStatus.NO_FACE,
+                blinkWindowReady = false,
                 faceDetected = false,
                 landmarkPoints = emptyList(),
                 leftIrisPoint = null,
                 rightIrisPoint = null,
                 inferenceFps = fps,
-                timestampMs = ts,
+                timestampMs = System.currentTimeMillis(),
             )
             return
         }
@@ -192,14 +205,6 @@ class FaceLandmarkerHelper @Inject constructor(
                 ((r.x() - l.x()) * rotW).toDouble(),
                 ((r.y() - l.y()) * rotH).toDouble(),
             ).toFloat()
-        } else if (faceLandmarks.size > 263) {
-            // Fallback outer eye landmarks if iris unavailable
-            val l = faceLandmarks[133]
-            val r = faceLandmarks[362]
-            ipdPx = hypot(
-                ((r.x() - l.x()) * rotW).toDouble(),
-                ((r.y() - l.y()) * rotH).toDouble(),
-            ).toFloat() * 1.85f
         }
 
         val overlayPoints = MINIMAL_MESH_INDICES
@@ -251,7 +256,7 @@ class FaceLandmarkerHelper @Inject constructor(
 
         val elapsedSessionMs = (ts - sessionStartMs).coerceAtLeast(1L)
         val bpm = when {
-            elapsedSessionMs < 12_000L && totalBlinks == 0 -> 15f
+            elapsedSessionMs < 12_000L -> 0f
             elapsedSessionMs < 60_000L -> {
                 val windowSec = (elapsedSessionMs / 1000f).coerceAtLeast(12f)
                 (blinkTimestamps.size * (60f / windowSec)).coerceIn(0f, 45f)
@@ -275,6 +280,8 @@ class FaceLandmarkerHelper @Inject constructor(
 
         _telemetryFlow.value = VisionTelemetry(
             faceDetected = true,
+            status = if (blendshapesOpt.isPresent && matrixOpt.isPresent) DataStatus.AVAILABLE else DataStatus.FAILED,
+            blinkWindowReady = elapsedSessionMs >= 60_000L,
             blinkRateBpm = bpm,
             totalBlinks = totalBlinks,
             eyeBlinkAvg = blinkAvg,
@@ -288,8 +295,12 @@ class FaceLandmarkerHelper @Inject constructor(
             frameWidth = currentRotatedWidth,
             frameHeight = currentRotatedHeight,
             inferenceFps = fps,
-            timestampMs = ts,
+            timestampMs = System.currentTimeMillis(),
         )
+    }
+
+    fun reportStatus(status: DataStatus) {
+        _telemetryFlow.value = VisionTelemetry(status = status, timestampMs = System.currentTimeMillis())
     }
 
     @Synchronized
